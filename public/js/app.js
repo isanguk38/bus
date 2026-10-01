@@ -1,6 +1,9 @@
 import { createPolyline, locateStops, pointAt, project } from './geometry.js';
 import { BusTrack, DEFAULT_SPEED } from './tracker.js';
 
+// server/lib/query.js와 같은 규칙: "10번 버스" → "10"
+const normalizeRouteQuery = (value) => value.replace(/\s+/g, '').replace(/(번버스|번|버스)$/, '');
+
 const KOREA_CENTER = [36.4, 127.8];
 const OFF_ROUTE_METERS = 500; // 경로에서 이보다 멀리 떨어진 GPS는 잘못된 값으로 보고 표시하지 않는다
 const WINDOW_MARGIN = 300;
@@ -107,12 +110,12 @@ async function search(event) {
   try {
     const regionId = ui.region.value;
     const routes = await getJson(`/api/routes?region=${encodeURIComponent(regionId)}&q=${encodeURIComponent(query)}`);
-    setMessage(ui.searchMessage, routes.length ? '' : '검색 결과가 없습니다.');
     ui.results.replaceChildren(
       ...routes.map((route) => {
         const li = document.createElement('li');
         const btn = document.createElement('button');
         btn.type = 'button';
+        btn.dataset.routeId = route.id;
         btn.innerHTML = `<span class="num">${escapeHtml(route.number)}</span>${escapeHtml(route.type ?? '')}
           <span class="ends">${escapeHtml(route.start)} ↔ ${escapeHtml(route.end)}</span>`;
         btn.addEventListener('click', () => selectRoute({ regionId, ...route }));
@@ -120,6 +123,14 @@ async function search(event) {
         return li;
       }),
     );
+
+    // 결과가 하나뿐이거나 입력한 번호와 정확히 같은 노선이 하나면 클릭 없이 바로 보여준다.
+    const number = normalizeRouteQuery(query);
+    const exact = routes.filter((route) => route.number === number);
+    const best = routes.length === 1 ? routes[0] : exact.length === 1 ? exact[0] : null;
+    if (!routes.length) setMessage(ui.searchMessage, '검색 결과가 없습니다. 노선 번호만 입력해 보세요. (예: 10, 11-1)');
+    else if (best) selectRoute({ regionId, ...best });
+    else setMessage(ui.searchMessage, `${routes.length}개 노선을 찾았습니다. 볼 노선을 눌러주세요.`);
   } catch (err) {
     setMessage(ui.searchMessage, err.message, true);
   } finally {
@@ -132,7 +143,10 @@ async function selectRoute(route) {
   disconnect();
   clearBuses();
   routeLayer.clearLayers();
-  ui.results.replaceChildren();
+  // 다른 노선으로 바로 바꿔볼 수 있도록 검색 결과는 남겨두고 선택한 노선만 표시한다.
+  for (const btn of ui.results.querySelectorAll('button')) {
+    btn.classList.toggle('active', btn.dataset.routeId === route.id);
+  }
   setMessage(ui.searchMessage, '노선 정보를 불러오는 중…');
 
   let detail;
@@ -263,7 +277,8 @@ function onPositions(message) {
 
 function addBus(id, track) {
   const { info } = track;
-  const label = (info.plate ?? '').slice(-4);
+  // 지도에는 노선 번호를, 차량번호는 클릭했을 때 팝업으로 보여준다.
+  const label = state.route.number ?? '';
   const icon = L.divIcon({
     className: 'bus-icon',
     html: `<div class="bus${info.lowFloor ? ' low-floor' : ''}"><div class="bus-arrow"></div><span class="bus-label">${escapeHtml(label)}</span></div>`,
@@ -282,7 +297,8 @@ function busPopup(track) {
   const lastStop = state.stopsByOrd.get(info.stopOrd);
   const speedText = track.measured ? `${Math.round(track.speed * 3.6)} km/h` : `측정 중 (기본 ${Math.round(DEFAULT_SPEED * 3.6)} km/h로 예측)`;
   const rows = [
-    `<div class="popup-title">${escapeHtml(info.plate)}</div>`,
+    `<div class="popup-title">${escapeHtml(state.route.number ?? '')}번 버스</div>`,
+    `차량번호: ${escapeHtml(info.plate)}`,
     lastStop ? `최근 정류장: ${escapeHtml(lastStop.name)}` : null,
     `추정 속도: ${speedText}`,
     info.lowFloor ? '저상버스' : null,

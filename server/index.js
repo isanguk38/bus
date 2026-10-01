@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { ApiError } from './lib/http.js';
 import { TtlCache } from './lib/cache.js';
+import { normalizeRouteQuery } from './lib/query.js';
 import { createRegistry } from './providers/index.js';
 import { LiveHub } from './live-hub.js';
 
@@ -36,7 +37,7 @@ app.get('/api/regions', handle(async (req, res) => {
 }));
 
 app.get('/api/routes', handle(async (req, res) => {
-  const query = String(req.query.q ?? '').trim();
+  const query = normalizeRouteQuery(req.query.q);
   if (!query || query.length > 20) throw new ApiError('노선 번호를 입력해 주세요.', { status: 400 });
   const source = registry.resolve(req.query.region);
   res.json(await searchCache.get(`${source.id}:${query}`, () => source.searchRoutes(query)));
