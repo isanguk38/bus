@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: bus-live-map
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # 공공데이터포털 인증키: Render 대시보드에서 직접 입력 (저장소에 올리지 않음)
+      - key: DATA_GO_KR_SERVICE_KEY
+        sync: false

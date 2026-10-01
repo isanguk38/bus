@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>버스 지금 어디</title>
+  <meta name="description" content="전국 시내버스의 실시간 위치를 지도 위에서 부드럽게 움직이는 모습으로 보여줍니다.">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <div id="map" role="application" aria-label="버스 실시간 위치 지도"></div>
+
+  <aside class="panel" id="panel" aria-label="노선 검색">
+    <header class="panel-head">
+      <h1><span aria-hidden="true">🚌</span> 버스 지금 어디</h1>
+      <button type="button" class="icon-btn" id="collapse" aria-expanded="true" aria-controls="panel-body">접기</button>
+    </header>
+
+    <div class="panel-body" id="panel-body">
+      <form class="search" id="search-form" role="search">
+        <label class="field">
+          <span>지역</span>
+          <select id="region" required>
+            <option value="seoul">서울특별시</option>
+          </select>
+        </label>
+        <label class="field grow">
+          <span>노선 번호</span>
+          <input id="query" type="search" inputmode="search" autocomplete="off" placeholder="예: 7016" maxlength="20" required>
+        </label>
+        <button type="submit" class="btn">검색</button>
+      </form>
+
+      <p class="message" id="search-message" role="status"></p>
+      <ul class="results" id="results"></ul>
+
+      <section class="route-card" id="route-card" hidden>
+        <div class="route-title">
+          <strong id="route-number"></strong>
+          <span class="chip" id="route-type"></span>
+          <span class="live-dot" id="live-dot" title="실시간 연결 상태"></span>
+        </div>
+        <p class="route-ends" id="route-ends"></p>
+        <dl class="stats">
+          <div><dt>운행 중</dt><dd id="bus-count">-</dd></div>
+          <div><dt>마지막 수신</dt><dd id="last-update">-</dd></div>
+        </dl>
+        <div class="progress" aria-hidden="true"><div class="progress-bar" id="progress-bar"></div></div>
+        <p class="message" id="live-message" role="status"></p>
+        <p class="note" id="path-note" hidden>이 지역은 도로 경로 데이터가 없어 정류장을 이은 선으로 표시합니다.</p>
+        <label class="toggle">
+          <input type="checkbox" id="show-raw">
+          <span>원본 GPS 위치 함께 보기</span>
+        </label>
+      </section>
+    </div>
+  </aside>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# 환경 변수 (API 키) — 절대 커밋하지 않기
+.env
+.env.local
+.env.*.local
+
+# 의존성 / 빌드 결과물
+node_modules/
+dist/
+build/
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
