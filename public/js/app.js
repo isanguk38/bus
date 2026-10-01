@@ -9,6 +9,7 @@ const WINDOW_MARGIN = 300;
 const HIDDEN_DISCONNECT_MS = 60_000; // 탭이 이만큼 가려져 있으면 연결을 끊어 API 호출을 아낀다
 const NEARBY_COUNT = 8; // "내 주변 정류장 보기"에 보여줄 정류장 수
 const SOON_SECONDS = 180;
+const PASSED_VISIBLE_METERS = 400; // 내 정류장을 지난 버스를 이 거리까지는 흐리게 계속 보여준다
 
 // server/lib/query.js와 같은 규칙: "10번 버스" → "10"
 const normalizeRouteQuery = (value) => value.replace(/\s+/g, '').replace(/(번버스|번|버스)$/, '');
@@ -687,6 +688,7 @@ function setMyStop(stop, { focus = false } = {}) {
   clearBoardResults();
   ui.mystopName.textContent = [stop.name, stop.no && `(${stop.no})`].filter(Boolean).join(' ');
   ui.mystopDirection.textContent = stop.direction ?? '';
+  for (const entry of state.tracks.values()) entry.track.holdAt = stop.s;
   applyDirectionFocus();
   renderApproach();
   updateRouteUrl();
@@ -722,13 +724,16 @@ function renderApproach() {
     return;
   }
   const list = approachList();
-  // 나에게 오는 버스만 지도에 남긴다. "다른 버스도 보기"를 켜면 나머지는 흐리게 보여준다.
+  // 나에게 오는 버스만 지도에 남긴다. 방금 내 정류장을 지난 버스는 갑자기 사라지지 않도록
+  // 400m 더 흐리게 보여준 뒤 숨긴다. "다른 버스도 보기"를 켜면 나머지도 흐리게 보여준다.
   const coming = new Set(list.map((b) => b.id));
+  const stopS = state.myStop.s;
   for (const entry of state.tracks.values()) {
     const mine = coming.has(entry.id);
+    const justPassed = !mine && entry.track.s > stopS && entry.track.s - stopS <= PASSED_VISIBLE_METERS;
     entry.root?.classList.toggle('past', !mine);
     const el = entry.marker.getElement();
-    if (el) el.style.display = mine || ui.showAllBuses.checked ? '' : 'none';
+    if (el) el.style.display = mine || justPassed || ui.showAllBuses.checked ? '' : 'none';
   }
 
   if (!list.length) {
@@ -739,9 +744,9 @@ function renderApproach() {
     .slice(0, 3)
     .map((bus) => {
       const soon = bus.seconds < SOON_SECONDS;
-      const time = bus.seconds < 60 ? '곧 도착' : `약 ${formatDuration(bus.seconds)}`;
+      const time = bus.seconds === 0 ? '도착' : bus.seconds < 60 ? '곧 도착' : `약 ${formatDuration(bus.seconds)}`;
       const where = bus.seconds === 0
-        ? '정류장에 거의 도착했어요'
+        ? '정류장에 도착했거나 서 있어요'
         : [bus.stopsAway > 0 && `${bus.stopsAway}정거장 전`, formatDistance(bus.distance), bus.viaTurn && '반환점 돌아서 와요']
           .filter(Boolean)
           .join(' · ');
@@ -836,6 +841,7 @@ function onPositions(message) {
 
 function addBus(id, track) {
   const { info } = track;
+  track.holdAt = state.myStop?.s ?? null;
   // 버스 색 = 지금 달리는 방향의 노선 색. 저상버스는 라벨에 ♿ 표시.
   const label = `${state.route.number ?? ''}${info.lowFloor ? ' ♿' : ''}`;
   const icon = L.divIcon({

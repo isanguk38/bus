@@ -28,6 +28,8 @@ export class BusTrack {
     this.s = s;
     this.displaySpeed = 0;
     this.info = info;
+    // 내 정류장 위치. 실제 관측이 이 지점을 지나기 전에는 예측만으로 지나가지 않는다 (정류장에서 기다림).
+    this.holdAt = null;
   }
 
   update({ s, at, info }) {
@@ -52,7 +54,8 @@ export class BusTrack {
 
   target(now) {
     const elapsed = Math.max(0, (now - this.observedAt) / 1000);
-    return this.observedS + Math.min(this.speed * PREDICTION_FACTOR * elapsed, MAX_LEAD);
+    const predicted = this.observedS + Math.min(this.speed * PREDICTION_FACTOR * elapsed, MAX_LEAD);
+    return this.holdAt != null && this.observedS < this.holdAt ? Math.min(predicted, this.holdAt) : predicted;
   }
 
   step(now, dtSec) {

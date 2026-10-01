@@ -68,6 +68,17 @@ test('GPS가 튀어 비현실적인 속도가 나오면 무시한다', () => {
   assert.equal(track.speed, 10);
 });
 
+test('내 정류장은 실제로 지나간 게 확인될 때까지 예측만으로 지나가지 않는다', () => {
+  const track = new BusTrack({ s: 0, at: T0, info: {} });
+  track.update({ s: 300, at: T0 + 30_000, info: {} }); // 10m/s
+  track.holdAt = 400;
+  run(track, T0 + 30_000, 60);
+  assert.ok(track.s <= 400, `정류장에서 기다림 (s=${track.s.toFixed(0)})`);
+  track.update({ s: 450, at: T0 + 90_000, info: {} }); // 정류장을 지난 관측
+  run(track, T0 + 90_000, 10);
+  assert.ok(track.s > 450, '지난 게 확인되면 다시 달린다');
+});
+
 test('크게 어긋나면 따라가지 않고 바로 옮긴다', () => {
   const track = new BusTrack({ s: 0, at: T0, info: {} });
   track.update({ s: 4000, at: T0 + 30_000, info: {} });
