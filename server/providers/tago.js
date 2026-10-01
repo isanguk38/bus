@@ -1,5 +1,6 @@
 import { ApiError, buildUrl, fetchJson, toArray } from '../lib/http.js';
 import { Quota } from '../lib/quota.js';
+import { snapToRoads } from '../lib/road-snap.js';
 
 // 국토교통부 TAGO: 서울을 제외한 전국(경기 시·군 포함) 시내버스
 export function createTagoProvider({ serviceKey, locationUrl, routeUrl, pollMs, dailyLimit }) {
@@ -46,9 +47,10 @@ export function createTagoProvider({ serviceKey, locationUrl, routeUrl, pollMs, 
             lng: Number(s.gpslong),
           }))
           .sort((a, b) => a.ord - b.ord);
-        // TAGO는 도로 경로 좌표를 주지 않아 정류장을 순서대로 이은 선을 경로로 쓴다.
-        const path = stops.map((s) => [s.lat, s.lng]);
-        return { id: routeId, region: `tago-${cityCode}`, number: null, path, stops, pathSource: 'stops' };
+        // TAGO는 도로 경로 좌표를 주지 않아 정류장 사이를 도로 경로 탐색으로 잇는다.
+        const { path, roadRatio } = await snapToRoads(stops);
+        const pathSource = roadRatio >= 0.5 ? 'osm' : 'stops';
+        return { id: routeId, region: `tago-${cityCode}`, number: null, path, stops, pathSource };
       },
 
       async getPositions(routeId) {

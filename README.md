@@ -55,6 +55,13 @@
 서울 API와 TAGO는 응답 형식, 좌표 필드, 결과 0·1건일 때의 표현이 모두 다릅니다. 지역별 어댑터가 같은 형태로 바꿔서 나머지 코드는 데이터 출처를 신경 쓰지 않습니다.
 (경기도 버스위치 API는 GPS 좌표 없이 정류장 순번만 제공해서, 좌표를 주는 TAGO로 경기도를 처리합니다.)
 
+### 5. 도로 경로가 없는 지역의 경로 복원
+TAGO는 정류장 좌표만 주기 때문에 정류장을 직선으로 이으면 선과 버스가 건물을 가로지릅니다.
+정류장 사이를 **OSRM(OpenStreetMap 기반 경로 탐색)** 으로 실제 도로에 맞춰 잇습니다.
+- 공개 서버 이용 정책(초당 1회)에 맞춰 25개 정류장씩 나눠 요청하고, 결과는 24시간 캐시
+- 일방통행·유턴 때문에 직선보다 3배 이상 돌아가는 구간은 잘못된 경로로 보고 직선으로 대체
+- 실패해도 직선 경로로 동작 (서비스가 멈추지 않음)
+
 ## 로컬 실행
 
 Node.js 20.12 이상이 필요합니다.
@@ -88,7 +95,9 @@ npm test               # 단위 테스트
 | `TAGO_POLL_MS` | 20000 | TAGO 버스 위치 수집 주기 (ms) |
 | `SEOUL_DAILY_LIMIT` | 1000 | 서울 API 일일 호출 한도 |
 | `TAGO_DAILY_LIMIT` | 10000 | TAGO API 일일 호출 한도 |
+| `OSRM_URL` | https://router.project-osrm.org | 도로 경로 탐색 서버 |
 
 ## 데이터 출처
 - 버스 정보: [공공데이터포털](https://www.data.go.kr) (서울특별시, 국토교통부)
 - 지도: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors
+- 도로 경로 탐색: [OSRM](https://project-osrm.org)

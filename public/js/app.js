@@ -189,7 +189,12 @@ async function selectRoute(route) {
   ui.number.textContent = state.route.number ?? '';
   ui.type.textContent = state.route.type ?? '';
   ui.ends.textContent = route.start && route.end ? `${route.start} ↔ ${route.end}` : '';
-  ui.pathNote.hidden = detail.pathSource !== 'stops';
+  const pathNotes = {
+    osm: '이 지역은 공식 도로 경로가 없어 OpenStreetMap 도로를 따라 추정한 경로로 표시합니다.',
+    stops: '이 지역은 도로 경로 데이터가 없어 정류장을 이은 선으로 표시합니다.',
+  };
+  ui.pathNote.textContent = pathNotes[detail.pathSource] ?? '';
+  ui.pathNote.hidden = !pathNotes[detail.pathSource];
   ui.busCount.textContent = '-';
   ui.lastUpdate.textContent = '-';
 
