@@ -13,6 +13,9 @@ services:
       # 공공데이터포털 인증키: Render 대시보드에서 직접 입력 (저장소에 올리지 않음)
       - key: DATA_GO_KR_SERVICE_KEY
         sync: false
+      # 선택: 카카오 장소 검색 (상가·건물 이름)
+      - key: KAKAO_REST_API_KEY
+        sync: false
       # 선택: 브이월드 배경지도·장소 검색 (없으면 OpenStreetMap 사용)
       - key: VWORLD_API_KEY
         sync: false

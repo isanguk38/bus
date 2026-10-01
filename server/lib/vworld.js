@@ -38,6 +38,8 @@ export function createVworld({ apiKey, domain }) {
   }
 
   return {
+    name: 'vworld',
+
     // 브라우저가 직접 불러오는 배경지도 타일. 키는 브이월드에 등록한 도메인에서만 동작한다.
     tiles: {
       light: `https://api.vworld.kr/req/wmts/1.0.0/${apiKey}/Base/{z}/{y}/{x}.png`,

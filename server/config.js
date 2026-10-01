@@ -31,6 +31,10 @@ export const config = {
     pollMs: num('TAGO_POLL_MS', 20_000),
     dailyLimit: num('TAGO_DAILY_LIMIT', 10_000),
   },
+  // 선택: 카카오 REST 키가 있으면 상가·건물 이름 검색에 쓴다 (브이월드보다 우선).
+  kakao: {
+    restApiKey: process.env.KAKAO_REST_API_KEY ?? null,
+  },
   // 선택: 브이월드 키가 있으면 배경지도와 장소·주소 검색에 쓴다.
   vworld: {
     apiKey: process.env.VWORLD_API_KEY ?? null,

@@ -6,6 +6,7 @@ import { TtlCache } from './lib/cache.js';
 import { normalizeRouteQuery } from './lib/query.js';
 import { distanceMeters } from './lib/geo.js';
 import { createVworld } from './lib/vworld.js';
+import { createKakaoPlaces } from './lib/kakao.js';
 import { createRegistry } from './providers/index.js';
 import { LiveHub } from './live-hub.js';
 
@@ -15,6 +16,8 @@ const HEARTBEAT_MS = 25_000;
 
 const registry = createRegistry(config);
 const vworld = createVworld(config.vworld);
+// 장소 검색: 상가·가게 이름은 카카오가 가장 잘 찾으므로 카카오 키가 있으면 우선 사용
+const places = createKakaoPlaces(config.kakao) ?? vworld;
 const hub = new LiveHub();
 // 노선·정류장 같은 정적 정보는 거의 바뀌지 않으므로 오래 캐시해 호출 한도를 아낀다.
 const regionsCache = new TtlCache(24 * HOUR, 1);
@@ -26,6 +29,9 @@ const stopSearchCache = new TtlCache(24 * HOUR, 2000);
 const placeSearchCache = new TtlCache(24 * HOUR, 2000);
 // 같은 정류장을 여러 명이 보고 있어도 도착 정보는 15초에 한 번만 조회한다.
 const arrivalsCache = new TtlCache(15_000, 1000);
+
+// 근처 기준 장소 검색은 약 1km 단위로 묶어 캐시한다.
+const placeKey = (query, near) => (near ? `${query}@${near.lat.toFixed(2)},${near.lng.toFixed(2)}` : query);
 
 function coordinateOf(value, min, max) {
   const n = Number(value);
@@ -82,10 +88,10 @@ app.get('/api/nearby', handle(async (req, res) => {
 
 // 화면 설정: 배경지도 종류, 장소 검색 지원 여부
 app.get('/api/config', (req, res) => {
-  res.json({ tiles: vworld?.tiles ?? null, placeSearch: Boolean(vworld) });
+  res.json({ tiles: vworld?.tiles ?? null, placeSearch: Boolean(places) });
 });
 
-// 탑승 위치 검색: 정류장 이름(서울·TAGO) + 장소·주소(브이월드 키가 있을 때)
+// 탑승 위치 검색: 정류장 이름(서울·TAGO) + 상가·건물 등 장소(카카오 또는 브이월드 키가 있을 때)
 // lat/lng를 주면 정류장을 그 위치에서 가까운 순으로 정렬한다.
 app.get('/api/search', handle(async (req, res) => {
   const query = String(req.query.q ?? '').trim();
@@ -95,12 +101,12 @@ app.get('/api/search', handle(async (req, res) => {
     ? { lat: coordinateOf(req.query.lat, 33, 39), lng: coordinateOf(req.query.lng, 124, 132) }
     : null;
 
-  const [stops, places] = await Promise.allSettled([
+  const [stops, placeResults] = await Promise.allSettled([
     stopSearchCache.get(`${source.id}:${query}`, () => source.searchStops(query)),
-    vworld ? placeSearchCache.get(query, () => vworld.searchPlaces(query)) : [],
+    places ? placeSearchCache.get(placeKey(query, near), () => places.searchPlaces(query, near)) : [],
   ]);
-  if (stops.status === 'rejected' && places.status === 'rejected') throw stops.reason;
-  if (places.status === 'rejected') console.warn('[search] 장소 검색 실패:', places.reason.message);
+  if (stops.status === 'rejected' && placeResults.status === 'rejected') throw stops.reason;
+  if (placeResults.status === 'rejected') console.warn('[search] 장소 검색 실패:', placeResults.reason.message);
 
   let stopList = stops.status === 'fulfilled' ? stops.value : [];
   if (near) {
@@ -110,8 +116,8 @@ app.get('/api/search', handle(async (req, res) => {
   }
   res.json({
     stops: stopList.slice(0, 15),
-    places: places.status === 'fulfilled' ? places.value : [],
-    placeSearch: Boolean(vworld),
+    places: placeResults.status === 'fulfilled' ? placeResults.value : [],
+    placeSearch: Boolean(places),
   });
 }));
 

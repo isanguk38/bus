@@ -12,9 +12,12 @@ export const DEFAULT_SPEED = 4; // m/s ≈ 14km/h, 도심 시내버스 평균 �
 const MAX_SPEED = 25; // m/s = 90km/h, 이보다 빠른 추정값은 GPS 튐으로 보고 버린다
 const MAX_LEAD = 600; // 관측 위치보다 최대 몇 m 앞까지 예측할지 (TAGO 갱신 간격 40초 × 15m/s)
 const SNAP_DISTANCE = 1500; // 이보다 크게 어긋나면 따라가지 않고 바로 옮긴다
-const LOOKAHEAD = 8; // 초. 이만큼 뒤의 예측 지점에 맞춰 속도를 정한다 (클수록 부드럽고 반응은 느림)
+const LOOKAHEAD = 12; // 초. 이만큼 뒤의 예측 지점에 맞춰 속도를 정한다 (클수록 부드럽고 반응은 느림)
 const ACCELERATION = 1.5; // 화면 속도가 목표 속도에 다가가는 비율 (초당)
-const MAX_DISPLAY_SPEED = 30; // m/s, 따라잡을 때도 이보다 빠르게 움직이지 않는다
+const MAX_DISPLAY_SPEED = 20; // m/s = 72km/h, 따라잡을 때도 이보다 빠르게 움직이지 않는다
+// 예측은 추정 속도보다 조금 느리게 한다. 앞서 나갔다가 실제 위치를 기다리며 멈추는 것보다
+// 살짝 뒤처졌다가 따라가는 편이 자연스럽다. (3분 실데이터 비교: 멈춤 19% → 9%, 최대 속도 108 → 72km/h)
+const PREDICTION_FACTOR = 0.8;
 
 export class BusTrack {
   constructor({ s, at, info }) {
@@ -49,7 +52,7 @@ export class BusTrack {
 
   target(now) {
     const elapsed = Math.max(0, (now - this.observedAt) / 1000);
-    return this.observedS + Math.min(this.speed * elapsed, MAX_LEAD);
+    return this.observedS + Math.min(this.speed * PREDICTION_FACTOR * elapsed, MAX_LEAD);
   }
 
   step(now, dtSec) {

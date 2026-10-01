@@ -29,7 +29,7 @@ test('새 관측이 예측보다 크게 앞서도 순간이동하지 않고 서�
   const before = track.s;
   now = run(track, now, 0.5);
   assert.ok(track.s - before < 20, `0.5초 동안 ${(track.s - before).toFixed(1)}m 이동 (튀지 않음)`);
-  run(track, now, 40);
+  run(track, now, 60);
   assert.ok(track.s > 900, `결국 따라잡는다 (s=${track.s.toFixed(0)})`);
 });
 

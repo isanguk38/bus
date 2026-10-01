@@ -543,7 +543,7 @@ select, input {
   position: absolute;
   inset: 4px;
   border-radius: 50%;
-  background: var(--bus);
+  background: var(--bus-color, var(--bus));
   border: 2px solid #fff;
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
 }
@@ -555,10 +555,8 @@ select, input {
   transform: translateX(-50%);
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-bottom: 8px solid var(--bus);
+  border-bottom: 8px solid var(--bus-color, var(--bus));
 }
-.bus.low-floor .bus-arrow::before { background: var(--bus-low); }
-.bus.low-floor .bus-arrow::after { border-bottom-color: var(--bus-low); }
 
 .bus-label {
   position: absolute;

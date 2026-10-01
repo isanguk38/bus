@@ -65,6 +65,7 @@ const ui = {
   liveDot: $('live-dot'),
   pathNote: $('path-note'),
   showRaw: $('show-raw'),
+  showAllBuses: $('show-all-buses'),
 };
 
 const VIEWS = ['nearby', 'search', 'stop', 'route'];
@@ -88,6 +89,10 @@ const state = {
   stopSByOrd: new Map(),
   stopsByOrd: new Map(),
   stopSorted: [],
+  segments: [], // 방향별 경로 구간 [{ direction, from, to }]
+  colorOf: new Map(), // 방향 → 색
+  segmentLines: [],
+  stopMarkers: [],
   myStop: null,
   focusPending: false,
   tracks: new Map(), // 버스 ID → { id, track, marker, arrow, root }
@@ -142,6 +147,12 @@ if (appConfig.tiles) {
     maxZoom: 19,
     attribution: `&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ${DATA_CREDIT}`,
   }).addTo(map);
+}
+
+// 장소 검색(카카오·브이월드)이 켜져 있으면 상가·건물 이름으로도 찾을 수 있다고 안내한다.
+if (appConfig.placeSearch) {
+  ui.placeQuery.placeholder = '정류장·상가·건물 이름 (예: 범계역 스타벅스)';
+  ui.boardQuery.placeholder = '탈 곳 검색 (정류장·상가·건물 이름)';
 }
 
 const LocateControl = L.Control.extend({
@@ -779,16 +790,19 @@ async function openRoute(route, { stopId = null, push = true } = {}) {
   state.stopsByOrd = new Map(state.stops.map((stop) => [stop.ord, stop]));
   state.stopSorted = [...distances].sort((a, b) => a - b);
 
-  // 방향(가는 길 / 오는 길)마다 선 색을 다르게 그린다.
+  // 방향(가는 길 / 오는 길)마다 선과 버스 색을 다르게 그린다.
   const segments = directionSegments(state.stops, state.line.length);
   const colorOf = new Map(segments.map((seg, i) => [seg.direction, css(`--dir-${(i % 3) + 1}`)]));
-  for (const seg of segments) {
-    L.polyline(slicePath(state.line, seg.from, seg.to), { color: colorOf.get(seg.direction), weight: 5, opacity: 0.8 })
-      .addTo(routeLayer);
-  }
+  state.segments = segments;
+  state.colorOf = colorOf;
+  state.segmentLines = segments.map((seg) =>
+    L.polyline(slicePath(state.line, seg.from, seg.to), { color: colorOf.get(seg.direction), weight: 5, opacity: 0.85 })
+      .addTo(routeLayer),
+  );
   renderLegend(segments, colorOf);
-  for (const stop of state.stops) {
-    L.circleMarker([stop.lat, stop.lng], {
+  state.stopMarkers = state.stops.map((stop) => ({
+    stop,
+    marker: L.circleMarker([stop.lat, stop.lng], {
       radius: 6,
       color: colorOf.get(stop.direction ?? null) ?? css('--route'),
       weight: 2,
@@ -797,8 +811,8 @@ async function openRoute(route, { stopId = null, push = true } = {}) {
     })
       .bindTooltip(stop.name, { direction: 'top', offset: [0, -6] })
       .bindPopup(() => stopPopup(stop))
-      .addTo(routeLayer);
-  }
+      .addTo(routeLayer),
+  }));
 
   const pathNotes = {
     osm: '이 지역은 공식 도로 경로가 없어 OpenStreetMap 도로를 따라 추정한 경로로 표시합니다.',
@@ -828,6 +842,25 @@ function directionSegments(stops, length) {
   return segments.length ? segments : [{ direction: null, from: 0, to: length }];
 }
 
+// 경로 위 거리 s가 속한 방향 구간
+function segmentIndexAt(s) {
+  const i = state.segments.findIndex((seg) => s < seg.to);
+  return i === -1 ? state.segments.length - 1 : i;
+}
+
+const directionColorAt = (s) => state.colorOf.get(state.segments[segmentIndexAt(s)].direction);
+
+// 내 정류장을 정하면 그 방향의 선·정류장만 진하게, 반대 방향은 흐리게 보여준다.
+function applyDirectionFocus() {
+  const focus = state.myStop ? segmentIndexAt(state.myStop.s) : null;
+  const focusDirection = focus == null ? undefined : state.segments[focus].direction;
+  state.segmentLines.forEach((line, i) => line.setStyle({ opacity: focus == null || i === focus ? 0.85 : 0.15 }));
+  for (const { stop, marker } of state.stopMarkers) {
+    const visible = focus == null || (stop.direction ?? null) === focusDirection;
+    marker.setStyle({ opacity: visible ? 1 : 0.15, fillOpacity: visible ? 1 : 0.15 });
+  }
+}
+
 function renderLegend(segments, colorOf) {
   const labeled = [...new Set(segments.map((s) => s.direction).filter(Boolean))];
   ui.legend.innerHTML = labeled
@@ -850,7 +883,20 @@ function closeRoute() {
   clearBuses();
   routeLayer.clearLayers();
   myStopLayer.clearLayers();
-  Object.assign(state, { route: null, line: null, stops: [], stopSorted: [], myStop: null, receivedAt: 0, focusPending: false });
+  Object.assign(state, {
+    route: null,
+    line: null,
+    stops: [],
+    stopSorted: [],
+    segments: [],
+    colorOf: new Map(),
+    segmentLines: [],
+    stopMarkers: [],
+    myStop: null,
+    receivedAt: 0,
+    focusPending: false,
+  });
+  ui.showAllBuses.checked = false;
   ui.mystop.hidden = true;
   ui.mystopHint.hidden = false;
   ui.legend.hidden = true;
@@ -915,6 +961,7 @@ function setMyStop(stop, { focus = false } = {}) {
   ui.mystopHint.hidden = true;
   ui.mystopName.textContent = [stop.name, stop.no && `(${stop.no})`].filter(Boolean).join(' ');
   renderDirectionChips();
+  applyDirectionFocus();
   renderApproach();
   updateRouteUrl();
 
@@ -944,15 +991,20 @@ function renderDirectionChips() {
   );
 }
 
+// 내 정류장으로 오는 버스. 같은 방향 구간을 달리는 버스만 보여주고,
+// 그런 버스가 없을 때만 반환점을 돌아서 올 버스를 보여준다.
 function approachList() {
   const entries = [...state.tracks.values()];
   const speed = routeSpeed(entries.filter((e) => e.track.measured).map((e) => e.track.speed));
-  return approachingBuses({
+  const all = approachingBuses({
     stopS: state.myStop.s,
     stopDistances: state.stopSorted,
     buses: entries.map((e) => ({ id: e.id, s: e.track.s })),
     speed,
   });
+  const segment = state.segments[segmentIndexAt(state.myStop.s)];
+  const sameDirection = all.filter((bus) => state.myStop.s - bus.distance >= segment.from - 1);
+  return sameDirection.length ? sameDirection : all.map((bus) => ({ ...bus, viaTurn: true }));
 }
 
 function renderApproach() {
@@ -962,8 +1014,14 @@ function renderApproach() {
     return;
   }
   const list = approachList();
+  // 나에게 오는 버스만 지도에 남긴다. "다른 버스도 보기"를 켜면 나머지는 흐리게 보여준다.
   const coming = new Set(list.map((b) => b.id));
-  for (const entry of state.tracks.values()) entry.root?.classList.toggle('past', !coming.has(entry.id));
+  for (const entry of state.tracks.values()) {
+    const mine = coming.has(entry.id);
+    entry.root?.classList.toggle('past', !mine);
+    const el = entry.marker.getElement();
+    if (el) el.style.display = mine || ui.showAllBuses.checked ? '' : 'none';
+  }
 
   if (!list.length) {
     ui.approachList.innerHTML = '<li class="empty">이 방향으로 다가오는 버스가 없어요. 반대 방향 정류장인지 확인해 주세요.</li>';
@@ -976,7 +1034,9 @@ function renderApproach() {
       const time = bus.seconds < 60 ? '곧 도착' : `약 ${formatDuration(bus.seconds)}`;
       const where = bus.seconds === 0
         ? '정류장에 거의 도착했어요'
-        : [bus.stopsAway > 0 && `${bus.stopsAway}정거장 전`, formatDistance(bus.distance)].filter(Boolean).join(' · ');
+        : [bus.stopsAway > 0 && `${bus.stopsAway}정거장 전`, formatDistance(bus.distance), bus.viaTurn && '반환점 돌아서 와요']
+          .filter(Boolean)
+          .join(' · ');
       return `<li><span class="arr-time${soon ? ' soon' : ''}">${time}</span><span class="arr-stops">${where}</span></li>`;
     })
     .join('');
@@ -1069,9 +1129,11 @@ function onPositions(message) {
 
 function addBus(id, track) {
   const { info } = track;
+  // 버스 색 = 지금 달리는 방향의 노선 색. 저상버스는 라벨에 ♿ 표시.
+  const label = `${state.route.number ?? ''}${info.lowFloor ? ' ♿' : ''}`;
   const icon = L.divIcon({
     className: 'map-icon',
-    html: `<div class="bus${info.lowFloor ? ' low-floor' : ''}"><div class="bus-arrow"></div><span class="bus-label">${escapeHtml(state.route.number ?? '')}</span></div>`,
+    html: `<div class="bus" style="--bus-color:${directionColorAt(track.s)}"><div class="bus-arrow"></div><span class="bus-label">${escapeHtml(label)}</span></div>`,
     iconSize: [30, 30],
     iconAnchor: [15, 15],
   });
@@ -1139,7 +1201,10 @@ setInterval(() => {
 }, 250);
 setInterval(() => {
   tickArrivals();
-  if (state.view === 'route') renderApproach();
+  if (state.view !== 'route' || !state.line) return;
+  // 반환점을 돈 버스는 색이 바뀐다.
+  for (const entry of state.tracks.values()) entry.root?.style.setProperty('--bus-color', directionColorAt(entry.track.s));
+  renderApproach();
 }, 1000);
 
 // ── 이벤트 ──
@@ -1170,6 +1235,8 @@ ui.placeForm.addEventListener('submit', searchPlaces);
 ui.boardForm.addEventListener('submit', searchBoarding);
 ui.region.addEventListener('change', () => setRegion(ui.region.value));
 ui.placeRegion.addEventListener('change', () => setRegion(ui.placeRegion.value));
+
+ui.showAllBuses.addEventListener('change', renderApproach);
 
 ui.showRaw.addEventListener('change', () => {
   if (ui.showRaw.checked) rawLayer.addTo(map);
