@@ -1,5 +1,7 @@
 const IDLE_CLEANUP_MS = 5 * 60_000;
 const QUOTA_RETRY_MS = 60_000;
+const BUSY_RETRY_MS = 10_000;
+const BUSY_SERVER = /가용한 세션/;
 
 // 노선별 실시간 채널.
 // 보고 있는 사람이 있는 노선만 수집하고, 같은 노선을 여러 명이 보면 외부 API는 한 번만 호출해 결과를 나눠준다.
@@ -52,8 +54,12 @@ export class LiveHub {
       this.#broadcast(channel, channel.last);
     } catch (err) {
       const quotaExceeded = err.code === 'QUOTA_EXCEEDED';
-      // 한도 초과는 외부 호출 없이 판단되므로 자주 확인해도 비용이 없다. 그 외 오류는 간격을 늘려 재시도한다.
-      nextDelay = quotaExceeded ? QUOTA_RETRY_MS : channel.source.pollMs * 2;
+      // 한도 초과는 외부 호출 없이 판단되므로 자주 확인해도 비용이 없다.
+      // 공공 API 서버의 동시 접속 한도("가용한 세션이 존재하지 않습니다")는 금방 풀리므로 짧게 기다린다.
+      // 그 외 오류는 간격을 늘려 재시도한다.
+      nextDelay = quotaExceeded
+        ? QUOTA_RETRY_MS
+        : BUSY_SERVER.test(err.message) ? BUSY_RETRY_MS : channel.source.pollMs * 2;
       if (!quotaExceeded) console.warn(`[live] ${channel.key} 수집 실패:`, err.message);
       this.#broadcast(channel, { type: 'error', message: err.message, code: err.code ?? null });
     } finally {

@@ -50,8 +50,6 @@ const ui = {
   boardResults: $('board-results'),
   // 실시간 상태
   busCount: $('bus-count'),
-  lastUpdate: $('last-update'),
-  progress: $('progress-bar'),
   liveMessage: $('live-message'),
   liveDot: $('live-dot'),
   pathNote: $('path-note'),
@@ -372,6 +370,7 @@ async function openRoute(route, { stopId = null } = {}) {
     return;
   }
   if (token !== state.routeToken) return; // 그사이 다른 화면으로 이동함
+  setMessage(ui.liveMessage, '');
 
   state.route = { ...route, number: route.number ?? detail.number, type: route.type ?? detail.type };
   ui.number.textContent = state.route.number ?? '';
@@ -464,8 +463,6 @@ function closeRoute() {
   clearBoardResults();
   ui.boardQuery.value = '';
   ui.busCount.textContent = '-';
-  ui.lastUpdate.textContent = '-';
-  ui.progress.style.width = '0';
   setLive('', '');
 }
 
@@ -769,15 +766,23 @@ function focusMyStop() {
 // ── 실시간 연결 (SSE) ──
 function connect() {
   if (!state.route || state.source) return;
-  setLive('warn', '실시간 위치에 연결하는 중…');
+  setLiveDot('warn', '실시간 위치에 연결하는 중');
   const source = new EventSource(api.liveUrl(state.route.regionId, state.route.id));
   source.onmessage = (event) => {
     const message = JSON.parse(event.data);
     if (message.type === 'positions') onPositions(message);
-    else if (message.type === 'error') setLive('error', message.message);
+    // 수집 중 오류(공공 API 혼잡 등)는 서버가 알아서 다시 시도하고, 그동안 버스는 마지막 위치 기준으로 계속 움직인다.
+    // 사용자가 할 수 있는 일이 없으므로 글자로 띄우지 않고 상태 점에만 표시한다.
+    else if (message.type === 'error') setLiveDot('warn', `잠시 위치를 받지 못해 다시 시도하는 중 (${message.message})`);
   };
-  source.onerror = () => setLive('warn', '연결이 끊겨 다시 연결하는 중…');
+  source.onerror = () => setLiveDot('warn', '연결이 끊겨 다시 연결하는 중');
   state.source = source;
+}
+
+// 실시간 연결 상태 점 (초록: 정상, 주황: 재시도 중). 이유는 마우스를 올리면 보인다.
+function setLiveDot(level, reason) {
+  ui.liveDot.className = `live-dot ${level}`;
+  ui.liveDot.title = reason;
 }
 
 function disconnect() {
@@ -834,7 +839,8 @@ function onPositions(message) {
   }
 
   ui.busCount.textContent = `${seen.size}대`;
-  setLive('ok', seen.size ? '' : '지금 운행 중인 버스가 없어요.');
+  setLiveDot('ok', '실시간 위치 수신 중');
+  setMessage(ui.liveMessage, seen.size ? '' : '지금 운행 중인 버스가 없어요.');
   renderApproach();
   if (state.focusPending && state.myStop) focusMyStop();
 }
@@ -904,15 +910,6 @@ function frame(time) {
 }
 requestAnimationFrame(frame);
 
-// 수신 시각, 진행 막대
-setInterval(() => {
-  if (state.view === 'route' && state.receivedAt) {
-    const elapsed = Date.now() - state.receivedAt;
-    ui.lastUpdate.textContent = `${Math.floor(elapsed / 1000)}초 전`;
-    ui.progress.style.width = `${Math.min(100, (elapsed / state.pollMs) * 100)}%`;
-  }
-}, 250);
-
 // 버스 색(반환점을 돌면 바뀜)과 도착 예상 시간
 setInterval(() => {
   if (state.view !== 'route' || !state.line) return;
@@ -953,7 +950,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     state.hiddenTimer = setTimeout(() => {
       disconnect();
-      setLive('warn', '화면이 가려져 있어 업데이트를 잠시 멈췄어요.');
+      setLiveDot('warn', '화면이 가려져 있어 업데이트를 잠시 멈췄어요');
     }, HIDDEN_DISCONNECT_MS);
   } else {
     clearTimeout(state.hiddenTimer);
