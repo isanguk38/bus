@@ -701,12 +701,14 @@ function setMyStop(stop, { focus = false } = {}) {
 // 내 정류장으로 오는 버스. 같은 방향 구간을 달리는 버스만 보여주고,
 // 그런 버스가 없을 때만 반환점을 돌아서 올 버스를 보여준다.
 function approachList() {
+  const now = Date.now();
   const entries = [...state.tracks.values()];
   const speed = routeSpeed(entries.filter((e) => e.track.measured).map((e) => e.track.speed));
   const all = approachingBuses({
     stopS: state.myStop.s,
     stopDistances: state.stopSorted,
-    buses: entries.map((e) => ({ id: e.id, s: e.track.s })),
+    // 화면에 그려진 위치가 아니라 데이터로 계산한 위치를 쓴다 → 어느 PC에서 열어도 같은 도착 시간
+    buses: entries.map((e) => ({ id: e.id, s: e.track.estimate(now) })),
     speed,
   });
   const segment = state.segments[segmentIndexAt(state.myStop.s)];
@@ -725,9 +727,11 @@ function renderApproach() {
   // 400m 더 흐리게 보여준 뒤 숨긴다. "다른 버스도 보기"를 켜면 나머지도 흐리게 보여준다.
   const coming = new Set(list.map((b) => b.id));
   const stopS = state.myStop.s;
+  const now = Date.now();
   for (const entry of state.tracks.values()) {
     const mine = coming.has(entry.id);
-    const justPassed = !mine && entry.track.s > stopS && entry.track.s - stopS <= PASSED_VISIBLE_METERS;
+    // 데이터상 내 정류장을 지났지만 화면의 버스가 아직 정류장 뒤 400m 안에 있으면 흐리게 계속 보여준다.
+    const justPassed = !mine && entry.track.estimate(now) > stopS && entry.track.s <= stopS + PASSED_VISIBLE_METERS;
     entry.root?.classList.toggle('past', !mine);
     const el = entry.marker.getElement();
     if (el) el.style.display = mine || justPassed || ui.showAllBuses.checked ? '' : 'none';

@@ -23,8 +23,9 @@ export class BusTrack {
   constructor({ s, at, info }) {
     this.observedS = s;
     this.observedAt = at;
-    this.speed = DEFAULT_SPEED;
-    this.measured = false;
+    // 서버가 추정한 속도가 있으면 그것을 쓴다 (모든 화면이 같은 값을 쓰도록). 없으면 직접 추정한다.
+    this.speed = info.speed ?? DEFAULT_SPEED;
+    this.measured = info.speed != null;
     this.s = s;
     this.displaySpeed = 0;
     this.info = info;
@@ -35,14 +36,20 @@ export class BusTrack {
   update({ s, at, info }) {
     const dt = (at - this.observedAt) / 1000;
     this.info = info;
+    if (info.speed != null) {
+      this.speed = info.speed;
+      this.measured = true;
+    }
     if (dt < 1) return; // 같은 관측이 다시 온 경우
 
-    const v = (s - this.observedS) / dt;
-    if (v >= 0 && v <= MAX_SPEED) {
-      this.speed = this.measured ? this.speed * 0.5 + v * 0.5 : v;
-      this.measured = true;
-    } else if (v < 0) {
-      this.speed = 0;
+    if (info.speed == null) {
+      const v = (s - this.observedS) / dt;
+      if (v >= 0 && v <= MAX_SPEED) {
+        this.speed = this.measured ? this.speed * 0.5 + v * 0.5 : v;
+        this.measured = true;
+      } else if (v < 0) {
+        this.speed = 0;
+      }
     }
     this.observedS = s;
     this.observedAt = at;
@@ -52,6 +59,15 @@ export class BusTrack {
     }
   }
 
+  // 데이터만으로 계산한 지금 위치 (마지막 관측 + 속도 × 경과 시간). 도착 예정 시간 계산에 쓴다.
+  // 화면 애니메이션 상태와 무관하므로, 같은 데이터를 받은 화면이면 어디서든 같은 값이 나온다.
+  estimate(now) {
+    const elapsed = Math.max(0, (now - this.observedAt) / 1000);
+    const predicted = this.observedS + Math.min(this.speed * elapsed, MAX_LEAD);
+    return this.holdAt != null && this.observedS < this.holdAt ? Math.min(predicted, this.holdAt) : predicted;
+  }
+
+  // 화면 애니메이션이 따라갈 목표 위치. 예측을 일부러 조금 느리게 잡아 앞서 나갔다 멈추는 일을 줄인다.
   target(now) {
     const elapsed = Math.max(0, (now - this.observedAt) / 1000);
     const predicted = this.observedS + Math.min(this.speed * PREDICTION_FACTOR * elapsed, MAX_LEAD);

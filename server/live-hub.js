@@ -1,3 +1,5 @@
+import { estimateSpeeds } from './lib/speed.js';
+
 const IDLE_CLEANUP_MS = 5 * 60_000;
 const QUOTA_RETRY_MS = 60_000;
 const BUSY_RETRY_MS = 10_000;
@@ -12,7 +14,18 @@ export class LiveHub {
     const key = `${source.id}:${routeId}`;
     let channel = this.#channels.get(key);
     if (!channel) {
-      channel = { key, source, routeId, clients: new Set(), timer: null, cleanup: null, polling: false, last: null, fetchedAt: 0 };
+      channel = {
+        key,
+        source,
+        routeId,
+        clients: new Set(),
+        timer: null,
+        cleanup: null,
+        polling: false,
+        last: null,
+        fetchedAt: 0,
+        tracked: new Map(), // 차량별 마지막 위치와 추정 속도
+      };
       this.#channels.set(key, channel);
     }
     clearTimeout(channel.cleanup);
@@ -48,7 +61,9 @@ export class LiveHub {
     channel.polling = true;
     let nextDelay = channel.source.pollMs;
     try {
-      const buses = await channel.source.getPositions(channel.routeId);
+      const result = estimateSpeeds(channel.tracked, await channel.source.getPositions(channel.routeId));
+      channel.tracked = result.tracked;
+      const { buses } = result;
       channel.fetchedAt = Date.now();
       channel.last = { type: 'positions', fetchedAt: channel.fetchedAt, pollMs: channel.source.pollMs, buses };
       this.#broadcast(channel, channel.last);
