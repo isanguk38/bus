@@ -17,6 +17,22 @@ const hub = new LiveHub();
 const regionsCache = new TtlCache(24 * HOUR, 1);
 const searchCache = new TtlCache(HOUR, 500);
 const routeCache = new TtlCache(24 * HOUR, 300);
+const nearbyCache = new TtlCache(5 * 60_000, 1000);
+// 같은 정류장을 여러 명이 보고 있어도 도착 정보는 15초에 한 번만 조회한다.
+const arrivalsCache = new TtlCache(15_000, 1000);
+
+function coordinateOf(value, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < min || n > max) throw new ApiError('위치 좌표가 올바르지 않습니다.', { status: 400 });
+  return n;
+}
+
+// 곧 오는 버스가 있는 노선부터, 그다음은 노선 번호 순
+function byArrival(a, b) {
+  const ta = a.buses[0]?.seconds ?? Infinity;
+  const tb = b.buses[0]?.seconds ?? Infinity;
+  return ta - tb || a.number.localeCompare(b.number, 'ko', { numeric: true });
+}
 
 const app = express();
 app.disable('x-powered-by');
@@ -47,6 +63,28 @@ app.get('/api/routes/:region/:routeId', handle(async (req, res) => {
   const source = registry.resolve(req.params.region);
   const routeId = routeIdOf(req.params.routeId);
   res.json(await routeCache.get(`${source.id}:${routeId}`, () => source.getRoute(routeId)));
+}));
+
+// 좌표 근처 정류장 (대한민국 범위만 허용)
+app.get('/api/nearby', handle(async (req, res) => {
+  const lat = coordinateOf(req.query.lat, 33, 39);
+  const lng = coordinateOf(req.query.lng, 124, 132);
+  // 약 100m 단위로 묶어 캐시한다.
+  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  res.json(await nearbyCache.get(key, () => registry.nearbyStops(lat, lng)));
+}));
+
+// 정류장 도착 예정 정보
+app.get('/api/stops/:region/:stopId/arrivals', handle(async (req, res) => {
+  const source = registry.resolve(req.params.region);
+  const stopId = routeIdOf(req.params.stopId);
+  // fetchedAt은 실제 조회 시각이다 (캐시된 응답이면 최대 15초 전). 브라우저는 이 기준으로 남은 시간을 줄여 보여준다.
+  const data = await arrivalsCache.get(`${source.id}:${stopId}`, async () => {
+    const result = await source.stopArrivals(stopId);
+    return { ...result, routes: result.routes.sort(byArrival), fetchedAt: Date.now() };
+  });
+  // 서버·브라우저 시계가 달라도 되도록 "몇 ms 전에 조회한 값인지"를 함께 보낸다.
+  res.json({ ...data, ageMs: Date.now() - data.fetchedAt });
 }));
 
 // 실시간 버스 위치 스트림 (Server-Sent Events)

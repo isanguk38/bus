@@ -1,3 +1,4 @@
+import { distanceMeters } from './geo.js';
 import { fetchJson } from './http.js';
 
 // TAGO는 도로 경로 없이 정류장 좌표만 준다. 정류장을 직선으로 이으면 선이 건물을 가로지르고
@@ -10,14 +11,6 @@ const DETOUR_RATIO = 3;
 const DETOUR_SLACK_METERS = 300;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function distanceMeters(a, b) {
-  const rad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * rad;
-  const dLng = (b.lng - a.lng) * rad;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
-  return 2 * 6_371_008.8 * Math.asin(Math.sqrt(h));
-}
 
 async function routeLegs(stops) {
   const coords = stops.map((s) => `${s.lng},${s.lat}`).join(';');

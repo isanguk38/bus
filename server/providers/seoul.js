@@ -6,6 +6,8 @@ const ROUTE_TYPES = {
 };
 const CONGESTION = { 3: '여유', 4: '보통', 5: '혼잡', 6: '매우혼잡' };
 const NO_RESULT = '4';
+const NEARBY_RADIUS = 500; // m
+const NOT_RUNNING = /운행종료|출발대기|정보없음|회차지/;
 
 // "20261001091541"(KST) → epoch ms
 function parseKst(stamp) {
@@ -15,9 +17,27 @@ function parseKst(stamp) {
   return Date.UTC(y, mo - 1, d, h - 9, mi, s);
 }
 
-export function createSeoulProvider({ serviceKey, positionUrl, routeUrl, pollMs, dailyLimit }) {
+const clean = (text) => (text ?? '').trim() || null;
+
+// 정류장 도착 정보의 n번째(1, 2) 버스
+function arrivalOf(item, n) {
+  const message = clean(item[`arrmsg${n}`]) ?? '';
+  const vehicle = item[`vehId${n}`];
+  if (!vehicle || vehicle === '0' || NOT_RUNNING.test(message)) return null;
+  const seconds = Number(item[`traTime${n}`]);
+  const stopsAway = Number(item.staOrd) - Number(item[`sectOrd${n}`]);
+  return {
+    seconds: Number.isFinite(seconds) ? seconds : null,
+    stopsAway: stopsAway >= 0 ? stopsAway : null,
+    lowFloor: item[`busType${n}`] === '1',
+    arriving: item[`isArrive${n}`] === '1' || message.startsWith('곧 도착'),
+  };
+}
+
+export function createSeoulProvider({ serviceKey, positionUrl, routeUrl, stationUrl, pollMs, dailyLimit }) {
   const positionQuota = new Quota('서울 버스위치정보', dailyLimit);
   const routeQuota = new Quota('서울 노선정보', dailyLimit);
+  const stationQuota = new Quota('서울 정류소정보', dailyLimit);
 
   async function call(base, operation, params, quota) {
     quota.take();
@@ -32,7 +52,7 @@ export function createSeoulProvider({ serviceKey, positionUrl, routeUrl, pollMs,
   return {
     id: 'seoul',
     pollMs,
-    quotas: () => [positionQuota.snapshot(), routeQuota.snapshot()],
+    quotas: () => [positionQuota.snapshot(), routeQuota.snapshot(), stationQuota.snapshot()],
 
     async searchRoutes(query) {
       const items = await call(routeUrl, 'getBusRouteList', { strSrch: query }, routeQuota);
@@ -56,12 +76,24 @@ export function createSeoulProvider({ serviceKey, positionUrl, routeUrl, pollMs,
         .map((p) => [Number(p.gpsY), Number(p.gpsX)]);
       const stops = stationItems.map((s) => ({
         ord: Number(s.seq),
-        id: s.station,
+        // 정류장 번호(arsId)를 ID로 쓴다. 정류장 표지판에 적힌 번호이자 도착 정보 조회 키.
+        id: s.arsId,
+        no: s.arsId !== '0' ? s.arsId : null,
         name: s.stationNm,
         lat: Number(s.gpsY),
         lng: Number(s.gpsX),
+        direction: clean(s.direction) ? `${s.direction.trim()} 방면` : null,
       }));
-      return { id: routeId, region: 'seoul', number: stationItems[0].busRouteNm, path, stops, pathSource: 'road' };
+      const first = stationItems[0];
+      return {
+        id: routeId,
+        region: 'seoul',
+        number: first.busRouteNm,
+        type: ROUTE_TYPES[first.routeType] ?? null,
+        path,
+        stops,
+        pathSource: 'road',
+      };
     },
 
     async getPositions(routeId) {
@@ -77,6 +109,40 @@ export function createSeoulProvider({ serviceKey, positionUrl, routeUrl, pollMs,
         congestion: CONGESTION[b.congetion] ?? null,
         observedAt: parseKst(b.dataTm),
       }));
+    },
+
+    async nearbyStops(lat, lng) {
+      const items = await call(stationUrl, 'getStationByPos', { tmX: lng, tmY: lat, radius: NEARBY_RADIUS }, stationQuota);
+      return items
+        .filter((s) => s.arsId && s.arsId !== '0')
+        .map((s) => ({
+          region: 'seoul',
+          id: s.arsId,
+          no: s.arsId,
+          name: s.stationNm,
+          lat: Number(s.gpsY),
+          lng: Number(s.gpsX),
+        }));
+    },
+
+    async stopArrivals(stopId) {
+      const items = await call(stationUrl, 'getStationByUid', { arsId: stopId }, stationQuota);
+      if (!items.length) throw new ApiError('정류장 정보를 찾을 수 없습니다.', { status: 404 });
+      const first = items[0];
+      return {
+        stop: { region: 'seoul', id: stopId, no: stopId, name: first.stNm, lat: Number(first.gpsY), lng: Number(first.gpsX) },
+        routes: items.map((r) => {
+          const buses = [arrivalOf(r, 1), arrivalOf(r, 2)].filter(Boolean);
+          return {
+            routeId: r.busRouteId,
+            number: r.rtNm,
+            type: ROUTE_TYPES[r.routeType] ?? null,
+            direction: clean(r.adirection) ? `${r.adirection.trim()} 방면` : null,
+            buses,
+            message: buses.length ? null : clean(r.arrmsg1) ?? '도착 정보 없음',
+          };
+        }),
+      };
     },
   };
 }

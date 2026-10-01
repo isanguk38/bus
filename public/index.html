@@ -2,9 +2,9 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>버스 지금 어디</title>
-  <meta name="description" content="전국 시내버스의 실시간 위치를 지도 위에서 부드럽게 움직이는 모습으로 보여줍니다.">
+  <meta name="description" content="내 주변 정류장의 버스 도착 정보와, 버스가 지도 위에서 실제로 다가오는 모습을 보여줍니다.">
   <meta name="theme-color" content="#2563eb">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -13,42 +13,86 @@
   <script type="module" src="/js/app.js"></script>
 </head>
 <body>
-  <div id="map" role="application" aria-label="버스 실시간 위치 지도"></div>
+  <div id="map" role="application" aria-label="버스 지도"></div>
 
-  <aside class="panel" id="panel" aria-label="노선 검색">
+  <aside class="panel" id="panel" aria-label="버스 찾기">
     <header class="panel-head">
-      <h1><span aria-hidden="true">🚌</span> 버스 지금 어디</h1>
+      <button type="button" class="back-btn" id="back" hidden aria-label="뒤로">←</button>
+      <h1 id="panel-title"><span aria-hidden="true">🚌</span> 버스 지금 어디</h1>
       <button type="button" class="icon-btn" id="collapse" aria-expanded="true" aria-controls="panel-body">접기</button>
     </header>
 
     <div class="panel-body" id="panel-body">
-      <form class="search" id="search-form" role="search">
-        <label class="field">
-          <span>지역</span>
-          <select id="region" required>
-            <option value="seoul">서울특별시</option>
-          </select>
-        </label>
-        <label class="field grow">
-          <span>노선 번호</span>
-          <input id="query" type="search" inputmode="search" autocomplete="off" placeholder="예: 7016" maxlength="20" required>
-        </label>
-        <button type="submit" class="btn">검색</button>
-      </form>
+      <div class="tabs" id="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-nearby" data-view="nearby" aria-selected="true">📍 내 주변</button>
+        <button type="button" role="tab" id="tab-search" data-view="search" aria-selected="false">🔍 노선 검색</button>
+      </div>
 
-      <p class="message" id="search-message" role="status"></p>
-      <ul class="results" id="results"></ul>
+      <!-- 내 주변 정류장 -->
+      <section class="view" id="view-nearby" role="tabpanel" aria-labelledby="tab-nearby">
+        <div class="actions">
+          <button type="button" class="btn" id="locate-btn">내 위치에서 정류장 찾기</button>
+          <button type="button" class="btn ghost" id="center-btn" title="지도를 원하는 곳으로 옮긴 뒤 누르세요">지도 중심에서 찾기</button>
+        </div>
+        <p class="message" id="nearby-message" role="status">가까운 정류장과 버스 도착 정보를 보여드려요.</p>
+        <ul class="list" id="nearby-list"></ul>
+      </section>
 
-      <section class="route-card" id="route-card" hidden>
+      <!-- 노선 검색 -->
+      <section class="view" id="view-search" role="tabpanel" aria-labelledby="tab-search" hidden>
+        <form class="search" id="search-form" role="search">
+          <label class="field">
+            <span>지역</span>
+            <select id="region" required>
+              <option value="seoul">서울특별시</option>
+            </select>
+          </label>
+          <label class="field grow">
+            <span>노선 번호</span>
+            <input id="query" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" placeholder="예: 7016, 10번" maxlength="20" required>
+          </label>
+          <button type="submit" class="btn">검색</button>
+        </form>
+        <p class="message" id="search-message" role="status"></p>
+        <ul class="list" id="results"></ul>
+      </section>
+
+      <!-- 정류장 도착 정보 -->
+      <section class="view" id="view-stop" hidden>
+        <div class="stop-head">
+          <h2 id="stop-name"></h2>
+          <p class="sub" id="stop-sub"></p>
+        </div>
+        <div class="refresh-row">
+          <span id="stop-updated" class="muted"></span>
+          <button type="button" class="link-btn" id="stop-refresh">새로고침</button>
+        </div>
+        <p class="message" id="stop-message" role="status"></p>
+        <ul class="list arrivals" id="arrival-list"></ul>
+      </section>
+
+      <!-- 노선 실시간 지도 -->
+      <section class="view" id="view-route" hidden>
         <div class="route-title">
-          <strong id="route-number"></strong>
+          <span class="route-badge" id="route-number"></span>
           <span class="chip" id="route-type"></span>
           <span class="live-dot" id="live-dot" title="실시간 연결 상태"></span>
         </div>
         <p class="route-ends" id="route-ends"></p>
+
+        <div class="mystop" id="mystop" hidden>
+          <div class="mystop-head">
+            <span class="muted">내 정류장</span>
+            <strong id="mystop-name"></strong>
+          </div>
+          <div class="chips" id="dir-chips" role="group" aria-label="타는 방향"></div>
+          <ul class="list approach" id="approach-list" aria-live="polite"></ul>
+        </div>
+        <p class="hint" id="mystop-hint">지도에서 정류장을 누르면 그 정류장으로 오는 버스를 알려드려요.</p>
+
         <dl class="stats">
           <div><dt>운행 중</dt><dd id="bus-count">-</dd></div>
-          <div><dt>마지막 수신</dt><dd id="last-update">-</dd></div>
+          <div><dt>위치 수신</dt><dd id="last-update">-</dd></div>
         </dl>
         <div class="progress" aria-hidden="true"><div class="progress-bar" id="progress-bar"></div></div>
         <p class="message" id="live-message" role="status"></p>

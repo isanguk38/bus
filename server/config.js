@@ -19,12 +19,15 @@ export const config = {
   seoul: {
     positionUrl: process.env.SEOUL_BUS_POSITION_URL ?? 'http://ws.bus.go.kr/api/rest/buspos',
     routeUrl: process.env.SEOUL_BUS_ROUTE_URL ?? 'http://ws.bus.go.kr/api/rest/busRouteInfo',
+    stationUrl: process.env.SEOUL_BUS_STATION_URL ?? 'http://ws.bus.go.kr/api/rest/stationinfo',
     pollMs: num('SEOUL_POLL_MS', 30_000),
     dailyLimit: num('SEOUL_DAILY_LIMIT', 1_000),
   },
   tago: {
     locationUrl: process.env.TAGO_BUS_LOCATION_URL ?? 'https://apis.data.go.kr/1613000/BusLcInfoInqireService',
     routeUrl: process.env.TAGO_BUS_ROUTE_URL ?? 'https://apis.data.go.kr/1613000/BusRouteInfoInqireService',
+    stopUrl: process.env.TAGO_BUS_STOP_URL ?? 'https://apis.data.go.kr/1613000/BusSttnInfoInqireService',
+    arrivalUrl: process.env.TAGO_BUS_ARRIVAL_URL ?? 'https://apis.data.go.kr/1613000/ArvlInfoInqireService',
     pollMs: num('TAGO_POLL_MS', 20_000),
     dailyLimit: num('TAGO_DAILY_LIMIT', 10_000),
   },
