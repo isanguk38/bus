@@ -152,39 +152,7 @@ button { font: inherit; color: inherit; }
   outline-offset: 1px;
 }
 
-/* ── 탭 ── */
-.tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 4px;
-  margin-bottom: 12px;
-  background: var(--surface-2);
-  border-radius: 10px;
-}
-.tabs[hidden] { display: none; }
-
-.tabs button {
-  border: 0;
-  border-radius: 8px;
-  padding: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-weight: 600;
-  cursor: pointer;
-}
-.tabs button[aria-selected="true"] {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
-}
-
 /* ── 버튼 / 입력 ── */
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 
 .btn {
   font-weight: 600;
@@ -247,6 +215,30 @@ select, input {
 }
 .hint[hidden], .note[hidden] { display: none; }
 
+/* ── 탈 곳 정하기 ── */
+.board {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.board[hidden] { display: none; }
+.board-title { margin: 0; font-size: 15px; }
+.board .list .item { background: var(--surface); }
+.board .message, .board .list { margin-top: 0; }
+.board .hint { margin: 0; }
+
+.link-btn.inline {
+  padding: 0 4px;
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--accent);
+}
+.mystop .link-btn { margin-top: 6px; padding-left: 0; color: var(--accent); }
+
 /* ── 정류장·장소 검색 ── */
 .place-row {
   display: flex;
@@ -265,16 +257,6 @@ select, input {
   color: var(--muted);
 }
 .list .item .icon { flex: none; width: 24px; text-align: center; }
-
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 14px 0 10px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 
 .origin-pin {
   position: relative;
@@ -330,19 +312,6 @@ select, input {
 .list .item .meta { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .list .item .chev { color: var(--muted); }
 
-.pin-num {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  font-weight: 700;
-  background: var(--accent);
-  color: #fff;
-}
-
 /* ── 노선 번호 배지 ── */
 .route-badge {
   flex: none;
@@ -359,25 +328,11 @@ select, input {
 .route-badge.t-express { background: var(--type-express); }
 .route-badge.t-circular { background: var(--type-circular); }
 
-/* ── 정류장 도착 정보 ── */
-.stop-head h2 { margin: 0; font-size: 20px; }
-.stop-head .sub { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
-
-.refresh-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 8px;
-  font-size: 12px;
-}
-
-.arrivals .item { align-items: flex-start; }
 .arr-main { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .arr-time { font-size: 17px; font-weight: 800; }
 .arr-time.soon { color: var(--soon); }
 .arr-time.none { font-size: 14px; font-weight: 600; color: var(--muted); }
 .arr-stops { font-size: 13px; color: var(--muted); }
-.arr-next, .arr-dir { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
 
 .tag {
   font-size: 11px;
@@ -449,27 +404,6 @@ select, input {
 .mystop[hidden] { display: none; }
 .mystop-head { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
 .mystop-head strong { font-size: 16px; }
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.chips:empty { display: none; }
-.chips button {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 999px;
-  padding: 5px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.chips button[aria-pressed="true"] {
-  border-color: var(--mystop);
-  background: var(--mystop);
-  color: #fff;
-}
 
 .approach { margin-top: 10px; }
 .approach li {
@@ -573,25 +507,6 @@ select, input {
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
 }
 
-.stop-pin {
-  width: 28px;
-  height: 28px;
-  border-radius: 50% 50% 50% 0;
-  transform: rotate(-45deg);
-  background: var(--accent);
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
-  display: grid;
-  place-items: center;
-}
-.stop-pin span {
-  transform: rotate(45deg);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-}
-.stop-pin.selected { background: var(--mystop); }
-
 .me-dot {
   width: 18px;
   height: 18px;
@@ -664,6 +579,4 @@ select, input {
     border-bottom: 0;
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .actions { flex-direction: row; }
-  .actions .btn { flex: 1; padding: 10px 8px; font-size: 14px; }
 }
