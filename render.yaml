@@ -10,9 +10,29 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      # 공공데이터포털 인증키 (신청한 모든 API가 이 키 하나를 같이 쓴다)
-      # Render 대시보드에서 직접 입력한다. 저장소에는 올리지 않는다.
-      # API 주소는 server/config.js에 기본값이 있어 따로 넣지 않아도 된다.
-      # 선택 기능(브이월드 지도, 카카오 장소 검색)은 README의 "선택 환경 변수"를 참고해 대시보드에서 추가한다.
+
+      # 공공데이터포털 인증키 — 비밀 값이라 Render 대시보드에서 직접 입력 (저장소에 올리지 않음)
       - key: DATA_GO_KR_SERVICE_KEY
         sync: false
+
+      # ── 전국: 국토교통부 TAGO ──
+      - key: TAGO_BUS_LOCATION_URL
+        value: https://apis.data.go.kr/1613000/BusLcInfoInqireService
+      - key: TAGO_BUS_ROUTE_URL
+        value: https://apis.data.go.kr/1613000/BusRouteInfoInqireService
+      - key: TAGO_BUS_STOP_URL
+        value: https://apis.data.go.kr/1613000/BusSttnInfoInqireService
+      - key: TAGO_BUS_ARRIVAL_URL
+        value: https://apis.data.go.kr/1613000/ArvlInfoInqireService
+
+      # ── 서울특별시 ──
+      - key: SEOUL_BUS_POSITION_URL
+        value: http://ws.bus.go.kr/api/rest/buspos
+      - key: SEOUL_BUS_ROUTE_URL
+        value: http://ws.bus.go.kr/api/rest/busRouteInfo
+      - key: SEOUL_BUS_STATION_URL
+        value: http://ws.bus.go.kr/api/rest/stationinfo
+
+      # ── 경기도 ── (현재 코드에서는 사용하지 않음: 경기도는 좌표를 주는 TAGO로 처리)
+      - key: GYEONGGI_BUS_LOCATION_URL
+        value: https://apis.data.go.kr/6410000/buslocationservice/v2
