@@ -1,6 +1,6 @@
 import * as api from './api.js';
 import { approachingBuses, formatDistance, formatDuration, routeSpeed, walkingMinutes } from './eta.js';
-import { createPolyline, locateStops, pointAt, project } from './geometry.js';
+import { createPolyline, locateStops, pointAt, project, slicePath } from './geometry.js';
 import { BusTrack, DEFAULT_SPEED } from './tracker.js';
 
 const KOREA_CENTER = [36.4, 127.8];
@@ -26,6 +26,15 @@ const ui = {
   centerBtn: $('center-btn'),
   nearbyMessage: $('nearby-message'),
   nearbyList: $('nearby-list'),
+  placeForm: $('place-form'),
+  placeRegion: $('place-region'),
+  placeQuery: $('place-query'),
+  placeMessage: $('place-message'),
+  placeResults: $('place-results'),
+  boardForm: $('board-form'),
+  boardQuery: $('board-query'),
+  boardMessage: $('board-message'),
+  boardResults: $('board-results'),
   // 검색
   form: $('search-form'),
   region: $('region'),
@@ -43,6 +52,7 @@ const ui = {
   number: $('route-number'),
   type: $('route-type'),
   ends: $('route-ends'),
+  legend: $('route-legend'),
   mystop: $('mystop'),
   mystopName: $('mystop-name'),
   mystopHint: $('mystop-hint'),
@@ -116,13 +126,23 @@ function updateUrl(params, title) {
 }
 
 // ── 지도 ──
+// 서버에 브이월드 키가 설정되어 있으면 브이월드 지도를, 아니면 OpenStreetMap을 쓴다.
+const appConfig = await api.config().catch(() => ({ tiles: null, placeSearch: false }));
+const darkMode = matchMedia('(prefers-color-scheme: dark)').matches;
 const map = L.map('map', { zoomControl: false }).setView(KOREA_CENTER, 7);
 L.control.zoom({ position: 'topright' }).addTo(map);
-// OpenStreetMap 기본 타일은 키 없이 무료로 쓸 수 있다. 다크 모드는 CSS 필터로 어둡게 바꾼다.
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · 버스 데이터: 공공데이터포털',
-}).addTo(map);
+const DATA_CREDIT = '버스 데이터: 공공데이터포털';
+if (appConfig.tiles) {
+  const { light, dark, attribution, minZoom, maxZoom } = appConfig.tiles;
+  document.documentElement.classList.add('native-dark-tiles');
+  L.tileLayer(darkMode ? dark : light, { minZoom, maxZoom, attribution: `${attribution} · ${DATA_CREDIT}` }).addTo(map);
+} else {
+  // OpenStreetMap 기본 타일은 키 없이 무료로 쓸 수 있다. 다크 모드는 CSS 필터로 어둡게 바꾼다.
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: `&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ${DATA_CREDIT}`,
+  }).addTo(map);
+}
 
 const LocateControl = L.Control.extend({
   options: { position: 'topright' },
@@ -229,9 +249,24 @@ function locate() {
   });
 }
 
+// 기준 위치: GPS로 얻은 내 위치, 또는 검색으로 고른 장소({ label }이 있음)
 function setMe(me) {
   state.me = me;
   meLayer.clearLayers();
+  if (me.label) {
+    L.marker([me.lat, me.lng], {
+      icon: L.divIcon({
+        className: 'map-icon',
+        html: `<div class="origin-pin"><span>${escapeHtml(me.label)}</span></div>`,
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+      }),
+      keyboard: false,
+      interactive: false,
+      zIndexOffset: 500,
+    }).addTo(meLayer);
+    return;
+  }
   if (me.accuracy && me.accuracy < 500) {
     L.circle([me.lat, me.lng], { radius: me.accuracy, color: css('--me'), weight: 1, fillOpacity: 0.08, interactive: false }).addTo(meLayer);
   }
@@ -291,8 +326,11 @@ async function detectRegion(lat, lng) {
   }
 }
 
+// 노선 검색과 정류장·장소 검색의 지역 선택은 항상 같은 값을 유지한다.
 function setRegion(regionId) {
-  if ([...ui.region.options].some((o) => o.value === regionId)) ui.region.value = regionId;
+  if (![...ui.region.options].some((o) => o.value === regionId)) return;
+  ui.region.value = regionId;
+  ui.placeRegion.value = regionId;
 }
 
 // ── 지역 목록 ──
@@ -304,14 +342,15 @@ async function loadRegions() {
       if (!groups.has(r.group)) groups.set(r.group, []);
       groups.get(r.group).push(r);
     }
-    ui.region.replaceChildren(
-      ...[...groups].map(([label, items]) => {
+    const options = () =>
+      [...groups].map(([label, items]) => {
         const group = document.createElement('optgroup');
         group.label = label;
         group.append(...items.map((r) => new Option(r.name, r.id)));
         return group;
-      }),
-    );
+      });
+    ui.region.replaceChildren(...options());
+    ui.placeRegion.replaceChildren(...options());
   } catch (err) {
     // 전국 목록을 못 받아도 서울은 쓸 수 있다.
     setMessage(ui.searchMessage, `전국 지역 목록을 불러오지 못했습니다. (${err.message})`, true);
@@ -383,6 +422,153 @@ function drawNearbyPins() {
       .on('click', () => openStop(stop))
       .addTo(nearbyLayer);
   });
+}
+
+// ── 정류장·장소 검색 ──
+// 결과 목록을 "정류장" / "장소" 묶음으로 그린다. onRouteStop이 있으면 지금 노선의 정류장을 맨 위에 따로 보여준다.
+function renderSearchResults(listEl, { stops, places }, { onStop, onPlace, routeStopIds = null }) {
+  const items = [];
+  const label = (text) => {
+    const li = document.createElement('li');
+    li.className = 'group-label';
+    li.textContent = text;
+    items.push(li);
+  };
+  const button = (icon, title, meta, onClick) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button type="button" class="item">
+      <span class="icon" aria-hidden="true">${icon}</span>
+      <span class="body"><span class="title">${escapeHtml(title)}</span>${meta ? `<span class="meta">${escapeHtml(meta)}</span>` : ''}</span>
+      <span class="chev" aria-hidden="true">›</span>
+    </button>`;
+    li.querySelector('button').addEventListener('click', onClick);
+    items.push(li);
+  };
+  const stopLine = (stop) => [stop.no && `정류장 번호 ${stop.no}`, stop.distance != null && formatDistance(stop.distance)].filter(Boolean).join(' · ');
+
+  const onRoute = routeStopIds ? stops.filter((s) => routeStopIds.has(s.id)) : [];
+  const others = routeStopIds ? stops.filter((s) => !routeStopIds.has(s.id)) : stops;
+  if (onRoute.length) {
+    label('이 노선이 서는 정류장');
+    for (const stop of onRoute) button('🚏', stop.name, stopLine(stop), () => onStop(stop));
+  }
+  if (others.length) {
+    label(routeStopIds ? '다른 정류장 (가까운 노선 정류장을 찾아드려요)' : '정류장');
+    for (const stop of others) button('🚏', stop.name, stopLine(stop), () => onStop(stop));
+  }
+  if (places.length) {
+    label('장소');
+    for (const place of places) button('📍', place.name, place.address, () => onPlace(place));
+  }
+  listEl.replaceChildren(...items);
+}
+
+function noResultMessage() {
+  return appConfig.placeSearch
+    ? '검색 결과가 없어요. 지역을 확인하거나 다른 이름으로 검색해 보세요.'
+    : '정류장 이름으로 찾지 못했어요. 지역을 확인하거나 정류장 이름 일부로 검색해 보세요. (예: 범계역, 시청)';
+}
+
+async function runSearch({ form, input, message, list, region, near, render }) {
+  const query = input.value.trim();
+  if (query.length < 2) return;
+  input.blur();
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  list.replaceChildren();
+  setMessage(message, '찾는 중… (지역에 따라 몇 초 걸릴 수 있어요)');
+  try {
+    const result = await api.search(region, query, near);
+    if (!result.stops.length && !result.places.length) {
+      setMessage(message, noResultMessage());
+      return;
+    }
+    setMessage(message, '');
+    render(result);
+  } catch (err) {
+    setMessage(message, err.message, true);
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+// 내 주변 탭: 정류장을 고르면 바로 도착 정보, 장소를 고르면 그 주변 정류장
+function searchPlaces(event) {
+  event.preventDefault();
+  runSearch({
+    form: ui.placeForm,
+    input: ui.placeQuery,
+    message: ui.placeMessage,
+    list: ui.placeResults,
+    region: ui.placeRegion.value,
+    near: state.me,
+    render: (result) =>
+      renderSearchResults(ui.placeResults, result, {
+        onStop: (stop) => openStop(stop),
+        onPlace: (place) => {
+          ui.placeResults.replaceChildren();
+          setMe({ lat: place.lat, lng: place.lng, label: place.name });
+          findNearby(place.lat, place.lng, `'${place.name}'`);
+        },
+      }),
+  });
+}
+
+// 노선 화면: 검색한 곳에서 탈 정류장을 정한다
+function searchBoarding(event) {
+  event.preventDefault();
+  const routeStopIds = new Set(state.stops.map((s) => s.id));
+  runSearch({
+    form: ui.boardForm,
+    input: ui.boardQuery,
+    message: ui.boardMessage,
+    list: ui.boardResults,
+    region: state.route.regionId,
+    near: state.myStop ?? state.me,
+    render: (result) =>
+      renderSearchResults(ui.boardResults, result, {
+        routeStopIds,
+        onStop: (stop) => {
+          const onRoute = state.stops.find((s) => s.id === stop.id);
+          if (onRoute) {
+            setMe({ lat: onRoute.lat, lng: onRoute.lng, label: onRoute.name });
+            finishBoarding(onRoute);
+          } else {
+            boardNear({ lat: stop.lat, lng: stop.lng, label: stop.name });
+          }
+        },
+        onPlace: (place) => boardNear({ lat: place.lat, lng: place.lng, label: place.name }),
+      }),
+  });
+}
+
+// 검색한 곳에서 가장 가까운 이 노선의 정류장을 고른다 (방향별 후보는 칩으로 바꿀 수 있음)
+function boardNear(origin) {
+  setMe(origin);
+  const [nearest] = myStopCandidates();
+  if (nearest) {
+    finishBoarding(nearest);
+    return;
+  }
+  // 1.5km 안에 이 노선 정류장이 없으면 가장 가까운 곳을 알려준다.
+  const here = L.latLng(origin.lat, origin.lng);
+  const closest = state.stops
+    .map((s) => ({ ...s, distance: here.distanceTo([s.lat, s.lng]) }))
+    .sort((a, b) => a.distance - b.distance)[0];
+  ui.boardResults.replaceChildren();
+  setMessage(
+    ui.boardMessage,
+    `'${origin.label}' 근처로는 이 노선이 지나지 않아요. 가장 가까운 정류장은 ${closest.name} (${formatDistance(closest.distance)})이에요.`,
+    true,
+  );
+  fitTo([[origin.lat, origin.lng], [closest.lat, closest.lng]], 16);
+}
+
+function finishBoarding(stop) {
+  ui.boardResults.replaceChildren();
+  ui.boardQuery.value = '';
+  setMessage(ui.boardMessage, '');
+  setMyStop(stop, { focus: true });
 }
 
 // ── 정류장 도착 정보 ──
@@ -593,11 +779,18 @@ async function openRoute(route, { stopId = null, push = true } = {}) {
   state.stopsByOrd = new Map(state.stops.map((stop) => [stop.ord, stop]));
   state.stopSorted = [...distances].sort((a, b) => a - b);
 
-  const polyline = L.polyline(state.line.latlngs, { color: css('--route'), weight: 5, opacity: 0.75 }).addTo(routeLayer);
+  // 방향(가는 길 / 오는 길)마다 선 색을 다르게 그린다.
+  const segments = directionSegments(state.stops, state.line.length);
+  const colorOf = new Map(segments.map((seg, i) => [seg.direction, css(`--dir-${(i % 3) + 1}`)]));
+  for (const seg of segments) {
+    L.polyline(slicePath(state.line, seg.from, seg.to), { color: colorOf.get(seg.direction), weight: 5, opacity: 0.8 })
+      .addTo(routeLayer);
+  }
+  renderLegend(segments, colorOf);
   for (const stop of state.stops) {
     L.circleMarker([stop.lat, stop.lng], {
       radius: 6,
-      color: css('--route'),
+      color: colorOf.get(stop.direction ?? null) ?? css('--route'),
       weight: 2,
       fillColor: css('--surface'),
       fillOpacity: 1,
@@ -616,10 +809,31 @@ async function openRoute(route, { stopId = null, push = true } = {}) {
 
   const myStop = stopId ? state.stops.find((s) => s.id === stopId) : myStopCandidates()[0];
   if (myStop) setMyStop(myStop, { focus: true });
-  else fitTo(polyline.getBounds(), 16);
+  else fitTo(state.line.latlngs, 16);
 
   updateRouteUrl();
   connect();
+}
+
+// 정류장 순서대로 방향 라벨이 바뀌는 지점에서 경로를 나눈다. 방향 정보가 없으면 한 덩어리.
+function directionSegments(stops, length) {
+  const segments = [];
+  for (const stop of stops) {
+    const direction = stop.direction ?? null;
+    const last = segments.at(-1);
+    if (last && last.direction === direction) continue;
+    if (last) last.to = stop.s;
+    segments.push({ direction, from: last ? stop.s : 0, to: length });
+  }
+  return segments.length ? segments : [{ direction: null, from: 0, to: length }];
+}
+
+function renderLegend(segments, colorOf) {
+  const labeled = [...new Set(segments.map((s) => s.direction).filter(Boolean))];
+  ui.legend.innerHTML = labeled
+    .map((dir) => `<span><i style="background:${colorOf.get(dir)}"></i>${escapeHtml(dir)}</span>`)
+    .join('');
+  ui.legend.hidden = labeled.length < 2;
 }
 
 function updateRouteUrl() {
@@ -639,6 +853,10 @@ function closeRoute() {
   Object.assign(state, { route: null, line: null, stops: [], stopSorted: [], myStop: null, receivedAt: 0, focusPending: false });
   ui.mystop.hidden = true;
   ui.mystopHint.hidden = false;
+  ui.legend.hidden = true;
+  ui.boardResults.replaceChildren();
+  ui.boardQuery.value = '';
+  setMessage(ui.boardMessage, '');
   ui.busCount.textContent = '-';
   ui.lastUpdate.textContent = '-';
   ui.progress.style.width = '0';
@@ -948,6 +1166,10 @@ ui.stopRefresh.addEventListener('click', () => {
   loadArrivals();
 });
 ui.form.addEventListener('submit', search);
+ui.placeForm.addEventListener('submit', searchPlaces);
+ui.boardForm.addEventListener('submit', searchBoarding);
+ui.region.addEventListener('change', () => setRegion(ui.region.value));
+ui.placeRegion.addEventListener('change', () => setRegion(ui.placeRegion.value));
 
 ui.showRaw.addEventListener('change', () => {
   if (ui.showRaw.checked) rawLayer.addTo(map);

@@ -125,6 +125,21 @@ export function createSeoulProvider({ serviceKey, positionUrl, routeUrl, station
         }));
     },
 
+    async searchStops(query) {
+      const items = await call(stationUrl, 'getStationByName', { stSrch: query }, stationQuota);
+      return items
+        .filter((s) => s.arsId && s.arsId !== '0')
+        .map((s) => ({
+          region: 'seoul',
+          id: s.arsId,
+          no: s.arsId,
+          name: s.stNm,
+          // 이 오퍼레이션은 tmX/tmY 필드에 WGS84 경위도를 담아 준다.
+          lat: Number(s.tmY),
+          lng: Number(s.tmX),
+        }));
+    },
+
     async stopArrivals(stopId) {
       const items = await call(stationUrl, 'getStationByUid', { arsId: stopId }, stationQuota);
       if (!items.length) throw new ApiError('정류장 정보를 찾을 수 없습니다.', { status: 404 });

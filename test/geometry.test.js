@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPolyline, locateStops, pointAt, project } from '../public/js/geometry.js';
+import { createPolyline, locateStops, pointAt, project, slicePath } from '../public/js/geometry.js';
 
 // 서울 근처에서 동쪽으로 약 1km 간 뒤 북쪽으로 약 1km 가는 ㄱ자 경로
 const EAST = 0.01131; // 위도 37.5에서 경도 0.01131도 ≈ 1000m
@@ -54,6 +54,15 @@ test('왕복 노선에서는 구간 제한으로 올바른 방향에 붙는다',
   const lng = 127.0 + EAST * 0.3;
   assert.ok(Math.abs(project(line, lat, lng, 1000, 2000).s - 1700) < 5, '오는 길로 제한하면 1700m');
   assert.ok(Math.abs(project(line, lat, lng, 0, 1000).s - 300) < 5, '가는 길로 제한하면 300m');
+});
+
+test('slicePath는 거리 구간만큼의 경로를 잘라낸다', () => {
+  const line = createPolyline(L_SHAPE);
+  const part = slicePath(line, 500, 1500);
+  assert.equal(part.length, 3, '시작점 + 꺾이는 점 + 끝점');
+  assert.ok(Math.abs(part[0][1] - (127.0 + EAST / 2)) < 1e-4);
+  assert.deepEqual(part[1], L_SHAPE[1]);
+  assert.ok(Math.abs(part[2][0] - (37.5 + NORTH / 2)) < 1e-4);
 });
 
 test('정류장 위치는 순서대로 증가한다', () => {

@@ -10,6 +10,9 @@
   --accent-soft: #dbeafe;
   --accent-text: #ffffff;
   --route: #2563eb;
+  --dir-1: #2563eb;
+  --dir-2: #9333ea;
+  --dir-3: #0d9488;
   --bus: #ea580c;
   --bus-low: #0891b2;
   --me: #2563eb;
@@ -40,6 +43,9 @@
     --accent: #3b82f6;
     --accent-soft: #1e3a8a;
     --route: #60a5fa;
+    --dir-1: #60a5fa;
+    --dir-2: #c084fc;
+    --dir-3: #2dd4bf;
     --bus: #fb923c;
     --bus-low: #22d3ee;
     --me: #60a5fa;
@@ -49,7 +55,8 @@
     --shadow: 0 8px 24px rgb(0 0 0 / 0.5);
     color-scheme: dark;
   }
-  .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9); }
+  /* OpenStreetMap에는 다크 지도가 없어 색을 뒤집는다. 브이월드는 자체 다크 지도(midnight)를 쓴다. */
+  :root:not(.native-dark-tiles) .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9); }
 }
 
 * { box-sizing: border-box; }
@@ -240,6 +247,59 @@ select, input {
 }
 .hint[hidden], .note[hidden] { display: none; }
 
+/* ── 정류장·장소 검색 ── */
+.place-row {
+  display: flex;
+  gap: 6px;
+}
+.place-row select { width: auto; max-width: 112px; flex: none; font-size: 14px; }
+.place-row input { flex: 1; min-width: 0; }
+.btn.small { padding: 8px 14px; flex: none; }
+.place-search.board { margin-top: 12px; }
+.place-search .hint { margin-top: 6px; }
+
+.list .group-label {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.list .item .icon { flex: none; width: 24px; text-align: center; }
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+.origin-pin {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--mystop);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+}
+.origin-pin span {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 0 4px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+
 /* ── 목록 공통 ── */
 .list {
   list-style: none;
@@ -367,6 +427,18 @@ select, input {
   color: var(--muted);
 }
 .route-ends:empty { display: none; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.legend[hidden] { display: none; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 18px; height: 4px; border-radius: 2px; }
 
 .mystop {
   margin-top: 12px;

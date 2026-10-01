@@ -67,6 +67,15 @@ export function pointAt(line, s) {
   return { lat: lat1 + (lat2 - lat1) * t, lng: lng1 + (lng2 - lng1) * t, bearing };
 }
 
+// 경로에서 [s0, s1] 구간만 잘라낸 위경도 배열 (방향별로 선 색을 다르게 그릴 때 사용)
+export function slicePath(line, s0, s1) {
+  const { cum, latlngs } = line;
+  const start = pointAt(line, s0);
+  const end = pointAt(line, s1);
+  const inner = latlngs.filter((_, i) => cum[i] > s0 && cum[i] < s1);
+  return [[start.lat, start.lng], ...inner, [end.lat, end.lng]];
+}
+
 // 각 정류장의 경로 위 거리. 앞 정류장 이후 구간에서만 찾아 순서가 뒤집히지 않게 한다.
 export function locateStops(line, stops, maxGap = 6000) {
   let prev = 0;

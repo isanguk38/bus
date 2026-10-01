@@ -7,7 +7,7 @@ export class ApiError extends Error {
 }
 
 export function buildUrl(base, operation, params) {
-  const url = new URL(`${base}/${operation}`);
+  const url = new URL(operation ? `${base}/${operation}` : base);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
   return url;
 }

@@ -23,4 +23,15 @@ export const nearby = (lat, lng) =>
 
 export const arrivals = (region, stopId) => getJson(`/api/stops/${enc(region)}/${enc(stopId)}/arrivals`);
 
+export const config = () => getJson('/api/config');
+
+export const search = (region, q, near) =>
+  getJson(
+    `/api/search?${new URLSearchParams({
+      region,
+      q,
+      ...(near ? { lat: near.lat.toFixed(5), lng: near.lng.toFixed(5) } : {}),
+    })}`,
+  );
+
 export const liveUrl = (region, routeId) => `/api/live?${new URLSearchParams({ region, route: routeId })}`;

@@ -16,9 +16,32 @@ function run(track, fromMs, sec) {
 
 test('첫 관측 직후에는 기본 속도로 예측해 움직인다', () => {
   const track = new BusTrack({ s: 0, at: T0, info: {} });
-  run(track, T0, 10);
-  assert.ok(track.s > 0, '정지해 있지 않다');
-  assert.ok(track.s <= DEFAULT_SPEED * 10, '예측 범위를 넘지 않는다');
+  const now = run(track, T0, 10);
+  assert.ok(track.s > DEFAULT_SPEED * 5, `정지해 있지 않다 (s=${track.s})`);
+  assert.ok(track.s <= track.target(now + 8000), '예측 범위를 넘지 않는다');
+});
+
+test('새 관측이 예측보다 크게 앞서도 순간이동하지 않고 서서히 따라잡는다', () => {
+  const track = new BusTrack({ s: 0, at: T0, info: {} });
+  track.update({ s: 300, at: T0 + 30_000, info: {} }); // 10m/s
+  let now = run(track, T0 + 30_000, 5);
+  track.update({ s: 900, at: T0 + 40_000, info: {} }); // 예상보다 훨씬 앞에서 관측됨
+  const before = track.s;
+  now = run(track, now, 0.5);
+  assert.ok(track.s - before < 20, `0.5초 동안 ${(track.s - before).toFixed(1)}m 이동 (튀지 않음)`);
+  run(track, now, 40);
+  assert.ok(track.s > 900, `결국 따라잡는다 (s=${track.s.toFixed(0)})`);
+});
+
+test('같은 관측(위치가 아직 안 바뀜)이 다시 와도 멈추지 않는다', () => {
+  const track = new BusTrack({ s: 0, at: T0, info: {} });
+  track.update({ s: 300, at: T0 + 30_000, info: {} });
+  const speed = track.speed;
+  track.update({ s: 300, at: T0 + 30_000, info: {} }); // 서버가 처음 본 시각을 유지해 보냄
+  assert.equal(track.speed, speed);
+  const before = track.s;
+  run(track, T0 + 50_000, 5);
+  assert.ok(track.s > before);
 });
 
 test('두 관측으로 속도를 추정한다', () => {
@@ -51,8 +74,8 @@ test('크게 어긋나면 따라가지 않고 바로 옮긴다', () => {
   assert.equal(track.s, 4000);
 });
 
-test('예측은 마지막 관측 위치보다 최대 400m까지만 앞서 간다', () => {
+test('예측은 마지막 관측 위치보다 최대 600m까지만 앞서 간다', () => {
   const track = new BusTrack({ s: 0, at: T0, info: {} });
   track.update({ s: 600, at: T0 + 30_000, info: {} }); // 20m/s
-  assert.equal(track.target(T0 + 30_000 + 600_000), 600 + 400);
+  assert.equal(track.target(T0 + 30_000 + 600_000), 600 + 600);
 });

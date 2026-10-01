@@ -30,6 +30,17 @@
 
       <!-- 내 주변 정류장 -->
       <section class="view" id="view-nearby" role="tabpanel" aria-labelledby="tab-nearby">
+        <form class="place-search" id="place-form" role="search">
+          <div class="place-row">
+            <select id="place-region" aria-label="검색 지역"><option value="seoul">서울특별시</option></select>
+            <input id="place-query" type="search" enterkeyhint="search" autocomplete="off" minlength="2" maxlength="40" required
+              placeholder="정류장·장소 검색 (예: 범계역)" aria-label="정류장 또는 장소 이름">
+            <button type="submit" class="btn small">찾기</button>
+          </div>
+        </form>
+        <p class="message" id="place-message" role="status"></p>
+        <ul class="list" id="place-results"></ul>
+        <div class="divider"><span>또는</span></div>
         <div class="actions">
           <button type="button" class="btn" id="locate-btn">내 위치에서 정류장 찾기</button>
           <button type="button" class="btn ghost" id="center-btn" title="지도를 원하는 곳으로 옮긴 뒤 누르세요">지도 중심에서 찾기</button>
@@ -79,6 +90,7 @@
           <span class="live-dot" id="live-dot" title="실시간 연결 상태"></span>
         </div>
         <p class="route-ends" id="route-ends"></p>
+        <div class="legend" id="route-legend" hidden aria-label="노선 방향별 선 색"></div>
 
         <div class="mystop" id="mystop" hidden>
           <div class="mystop-head">
@@ -88,7 +100,17 @@
           <div class="chips" id="dir-chips" role="group" aria-label="타는 방향"></div>
           <ul class="list approach" id="approach-list" aria-live="polite"></ul>
         </div>
-        <p class="hint" id="mystop-hint">지도에서 정류장을 누르면 그 정류장으로 오는 버스를 알려드려요.</p>
+        <p class="hint" id="mystop-hint">어디서 타실지 정하면 그 정류장으로 오는 버스와 남은 시간을 알려드려요.</p>
+        <form class="place-search board" id="board-form" role="search">
+          <div class="place-row">
+            <input id="board-query" type="search" enterkeyhint="search" autocomplete="off" minlength="2" maxlength="40" required
+              placeholder="탈 곳 검색 (정류장·장소 이름)" aria-label="탑승할 정류장 또는 장소">
+            <button type="submit" class="btn small">찾기</button>
+          </div>
+          <p class="hint">또는 지도에서 정류장을 눌러 "여기서 탈래요"를 고르세요.</p>
+        </form>
+        <p class="message" id="board-message" role="status"></p>
+        <ul class="list" id="board-results"></ul>
 
         <dl class="stats">
           <div><dt>운행 중</dt><dd id="bus-count">-</dd></div>

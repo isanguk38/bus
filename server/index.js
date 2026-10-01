@@ -4,6 +4,8 @@ import { config } from './config.js';
 import { ApiError } from './lib/http.js';
 import { TtlCache } from './lib/cache.js';
 import { normalizeRouteQuery } from './lib/query.js';
+import { distanceMeters } from './lib/geo.js';
+import { createVworld } from './lib/vworld.js';
 import { createRegistry } from './providers/index.js';
 import { LiveHub } from './live-hub.js';
 
@@ -12,12 +14,16 @@ const ROUTE_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const HEARTBEAT_MS = 25_000;
 
 const registry = createRegistry(config);
+const vworld = createVworld(config.vworld);
 const hub = new LiveHub();
 // 노선·정류장 같은 정적 정보는 거의 바뀌지 않으므로 오래 캐시해 호출 한도를 아낀다.
 const regionsCache = new TtlCache(24 * HOUR, 1);
 const searchCache = new TtlCache(HOUR, 500);
 const routeCache = new TtlCache(24 * HOUR, 300);
 const nearbyCache = new TtlCache(5 * 60_000, 1000);
+// 정류장 이름 검색은 TAGO 응답이 3~8초로 느려서 하루 동안 캐시한다.
+const stopSearchCache = new TtlCache(24 * HOUR, 2000);
+const placeSearchCache = new TtlCache(24 * HOUR, 2000);
 // 같은 정류장을 여러 명이 보고 있어도 도착 정보는 15초에 한 번만 조회한다.
 const arrivalsCache = new TtlCache(15_000, 1000);
 
@@ -72,6 +78,41 @@ app.get('/api/nearby', handle(async (req, res) => {
   // 약 100m 단위로 묶어 캐시한다.
   const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
   res.json(await nearbyCache.get(key, () => registry.nearbyStops(lat, lng)));
+}));
+
+// 화면 설정: 배경지도 종류, 장소 검색 지원 여부
+app.get('/api/config', (req, res) => {
+  res.json({ tiles: vworld?.tiles ?? null, placeSearch: Boolean(vworld) });
+});
+
+// 탑승 위치 검색: 정류장 이름(서울·TAGO) + 장소·주소(브이월드 키가 있을 때)
+// lat/lng를 주면 정류장을 그 위치에서 가까운 순으로 정렬한다.
+app.get('/api/search', handle(async (req, res) => {
+  const query = String(req.query.q ?? '').trim();
+  if (query.length < 2 || query.length > 40) throw new ApiError('검색어를 2글자 이상 입력해 주세요.', { status: 400 });
+  const source = registry.resolve(req.query.region);
+  const near = req.query.lat && req.query.lng
+    ? { lat: coordinateOf(req.query.lat, 33, 39), lng: coordinateOf(req.query.lng, 124, 132) }
+    : null;
+
+  const [stops, places] = await Promise.allSettled([
+    stopSearchCache.get(`${source.id}:${query}`, () => source.searchStops(query)),
+    vworld ? placeSearchCache.get(query, () => vworld.searchPlaces(query)) : [],
+  ]);
+  if (stops.status === 'rejected' && places.status === 'rejected') throw stops.reason;
+  if (places.status === 'rejected') console.warn('[search] 장소 검색 실패:', places.reason.message);
+
+  let stopList = stops.status === 'fulfilled' ? stops.value : [];
+  if (near) {
+    stopList = stopList
+      .map((s) => ({ ...s, distance: Math.round(distanceMeters(near, s)) }))
+      .sort((a, b) => a.distance - b.distance);
+  }
+  res.json({
+    stops: stopList.slice(0, 15),
+    places: places.status === 'fulfilled' ? places.value : [],
+    placeSearch: Boolean(vworld),
+  });
 }));
 
 // 정류장 도착 예정 정보

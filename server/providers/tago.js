@@ -41,6 +41,8 @@ export function createTagoProvider({ serviceKey, locationUrl, routeUrl, stopUrl,
   const arrivalQuota = new Quota('TAGO 버스도착정보', dailyLimit);
   // 정류장을 지나는 노선 목록은 거의 바뀌지 않는다.
   const throughRoutesCache = new TtlCache(DAY, 2000);
+  // 노선별 → 차량별 마지막 위치와 그 위치가 처음 보인 시각
+  const lastSeen = new Map();
 
   async function call(base, operation, params, quota) {
     quota.take();
@@ -96,16 +98,42 @@ export function createTagoProvider({ serviceKey, locationUrl, routeUrl, stopUrl,
       async getPositions(routeId) {
         const items = await call(locationUrl, 'getRouteAcctoBusLcList', { cityCode, routeId }, locationQuota);
         const fetchedAt = Date.now();
-        return items.map((b) => ({
-          id: b.vehicleno,
-          plate: b.vehicleno,
-          lat: Number(b.gpslati),
-          lng: Number(b.gpslong),
-          stopOrd: Number(b.nodeord) || null,
-          lowFloor: null,
-          congestion: null,
-          // TAGO는 측정 시각을 주지 않으므로 받은 시각을 쓴다.
-          observedAt: fetchedAt,
+        // TAGO는 측정 시각을 주지 않고, 위치 자체도 40초 안팎마다만 바뀐다 (실측 중앙값 42초).
+        // 받은 시각을 그대로 쓰면 같은 위치가 다시 왔을 때 "버스가 멈췄다"로 오해하므로,
+        // 버스별로 위치가 처음 바뀐 시각을 기억해 관측 시각으로 쓴다.
+        const key = `${cityCode}:${routeId}`;
+        const previous = lastSeen.get(key) ?? new Map();
+        const current = new Map();
+        const buses = items.map((b) => {
+          const position = `${b.gpslati},${b.gpslong}`;
+          const seen = previous.get(b.vehicleno);
+          const since = seen?.position === position ? seen.since : fetchedAt;
+          current.set(b.vehicleno, { position, since });
+          return {
+            id: b.vehicleno,
+            plate: b.vehicleno,
+            lat: Number(b.gpslati),
+            lng: Number(b.gpslong),
+            stopOrd: Number(b.nodeord) || null,
+            lowFloor: null,
+            congestion: null,
+            observedAt: since,
+          };
+        });
+        lastSeen.set(key, current);
+        if (lastSeen.size > 500) lastSeen.delete(lastSeen.keys().next().value);
+        return buses;
+      },
+
+      async searchStops(query) {
+        const items = await call(stopUrl, 'getSttnNoList', { cityCode, nodeNm: query }, stopQuota);
+        return items.map((s) => ({
+          region,
+          id: s.nodeid,
+          no: s.nodeno ? String(s.nodeno) : null,
+          name: s.nodenm,
+          lat: Number(s.gpslati),
+          lng: Number(s.gpslong),
         }));
       },
 
