@@ -10,14 +10,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      # 공공데이터포털 인증키: Render 대시보드에서 직접 입력 (저장소에 올리지 않음)
+      # 공공데이터포털 인증키 (신청한 모든 API가 이 키 하나를 같이 쓴다)
+      # Render 대시보드에서 직접 입력한다. 저장소에는 올리지 않는다.
+      # API 주소는 server/config.js에 기본값이 있어 따로 넣지 않아도 된다.
+      # 선택 기능(브이월드 지도, 카카오 장소 검색)은 README의 "선택 환경 변수"를 참고해 대시보드에서 추가한다.
       - key: DATA_GO_KR_SERVICE_KEY
-        sync: false
-      # 선택: 카카오 장소 검색 (상가·건물 이름)
-      - key: KAKAO_REST_API_KEY
-        sync: false
-      # 선택: 브이월드 배경지도·장소 검색 (없으면 OpenStreetMap 사용)
-      - key: VWORLD_API_KEY
-        sync: false
-      - key: VWORLD_DOMAIN
         sync: false
